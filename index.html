@@ -1,0 +1,155 @@
+<!doctype html>
+<html lang="uk">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>NI Live Dashboard</title>
+  <style>
+    body { font-family: Arial, sans-serif; padding:16px; background:#0f172a; color:#e2e8f0; }
+    .row { display:flex; gap:12px; flex-wrap:wrap; margin-bottom:12px; }
+    .card { background:#1e293b; border:1px solid rgba(255,255,255,.08); border-radius:14px; padding:12px 14px; min-width:220px; }
+    .k { color:#94a3b8; font-size:13px; margin-bottom:6px; }
+    .v { font-size:24px; font-weight:700; }
+    .pill { display:inline-flex; align-items:center; gap:10px; padding:8px 12px; border-radius:999px;
+            background:rgba(255,255,255,.06); border:1px solid rgba(255,255,255,.08); font-weight:700; }
+    .dot { width:10px; height:10px; border-radius:50%; background:#fbbf24; }
+    .ok  { background:#22c55e; }
+    .bad { background:#ef4444; }
+    canvas { width:100%; height:420px; background:#1e293b; border-radius:14px; border:1px solid rgba(255,255,255,.08); }
+    pre { white-space:pre-wrap; background:#111827; padding:10px; border-radius:10px; border:1px solid rgba(255,255,255,.08); }
+  </style>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+</head>
+<body>
+  <h2>NI Live Dashboard</h2>
+
+  <div class="row">
+    <div class="pill"><span id="dot" class="dot"></span><span id="st">CONNECTING...</span></div>
+    <div class="pill">Updated: <span id="upd">--</span></div>
+    <div class="pill">Age: <span id="age">--</span>s</div>
+  </div>
+
+  <div class="row">
+    <div class="card"><div class="k">AI0</div><div class="v" id="ai0">--</div></div>
+    <div class="card"><div class="k">AI1</div><div class="v" id="ai1">--</div></div>
+    <div class="card"><div class="k">AI2</div><div class="v" id="ai2">--</div></div>
+  </div>
+
+  <canvas id="chart"></canvas>
+
+  <h3>Last message</h3>
+  <pre id="last">--</pre>
+
+<script>
+  const WS_URL = "wss://ni-live-monitor.yanovichvitaliy.workers.dev/ws";
+  const dot = document.getElementById("dot");
+  const st  = document.getElementById("st");
+  const upd = document.getElementById("upd");
+  const age = document.getElementById("age");
+  const el0 = document.getElementById("ai0");
+  const el1 = document.getElementById("ai1");
+  const el2 = document.getElementById("ai2");
+  const last = document.getElementById("last");
+
+  function setStatus(text, mode){
+    st.textContent = text;
+    dot.className = "dot " + (mode === "ok" ? "ok" : mode === "bad" ? "bad" : "");
+  }
+
+  function fmtV(x){
+    const n = Number(x);
+    return Number.isFinite(n) ? n.toFixed(5) + " V" : "--";
+  }
+
+  // Chart setup
+  const ctx = document.getElementById("chart").getContext("2d");
+  const chart = new Chart(ctx, {
+    type: "line",
+    data: {
+      datasets: [
+        { label: "AI0", data: [] },
+        { label: "AI1", data: [] },
+        { label: "AI2", data: [] },
+      ]
+    },
+    options: {
+      responsive: true,
+      animation: false,
+      parsing: false,
+      normalized: true,
+      scales: {
+        x: { type: "linear", title: { display: true, text: "t (s)" } },
+        y: { title: { display: true, text: "V" } }
+      }
+    }
+  });
+
+  // Keep a rolling series in the browser for smooth live view
+  const MAX_POINTS = 600; // ~10 minutes at 1Hz updates (we add 1 point per update)
+  let t0 = null;
+  let lastUpdatedAtMs = null;
+
+  function pushPoint(payload){
+    const u = payload.updated_at || payload._received_at;
+    const ms = Date.parse(u);
+    if (!Number.isFinite(ms)) return;
+
+    if (t0 === null) t0 = ms;
+    lastUpdatedAtMs = ms;
+
+    const x = (ms - t0) / 1000.0;
+    const latest = payload.latest || {};
+    const y0 = Number(latest.ai0);
+    const y1 = Number(latest.ai1);
+    const y2 = Number(latest.ai2);
+
+    chart.data.datasets[0].data.push({x, y:y0});
+    chart.data.datasets[1].data.push({x, y:y1});
+    chart.data.datasets[2].data.push({x, y:y2});
+
+    // trim
+    for (const ds of chart.data.datasets){
+      if (ds.data.length > MAX_POINTS) ds.data.splice(0, ds.data.length - MAX_POINTS);
+    }
+
+    chart.update("none");
+  }
+
+  // Age ticker
+  setInterval(() => {
+    if (!lastUpdatedAtMs) return;
+    const s = Math.max(0, Math.round((Date.now() - lastUpdatedAtMs) / 1000));
+    age.textContent = String(s);
+    if (s <= 5) setStatus("LIVE", "ok");
+    else if (s <= 30) setStatus("STALE", "");
+    else setStatus("OFFLINE", "bad");
+  }, 1000);
+
+  // WebSocket
+  const ws = new WebSocket(WS_URL);
+
+  ws.onopen = () => setStatus("CONNECTED", "ok");
+  ws.onclose = () => setStatus("CLOSED", "bad");
+  ws.onerror = () => setStatus("ERROR", "bad");
+
+  ws.onmessage = (e) => {
+    last.textContent = e.data;
+
+    let msg;
+    try { msg = JSON.parse(e.data); } catch { return; }
+    const payload = msg.data || null;
+    if (!payload) return;
+
+    const latest = payload.latest || {};
+    el0.textContent = fmtV(latest.ai0);
+    el1.textContent = fmtV(latest.ai1);
+    el2.textContent = fmtV(latest.ai2);
+
+    const u = payload.updated_at || payload._received_at || "--";
+    upd.textContent = u;
+
+    pushPoint(payload);
+  };
+</script>
+</body>
+</html>
