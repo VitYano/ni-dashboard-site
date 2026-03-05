@@ -16,7 +16,6 @@
     .ok  { background:#22c55e; }
     .bad { background:#ef4444; }
     canvas { width:100%; height:420px; background:#1e293b; border-radius:14px; border:1px solid rgba(255,255,255,.08); }
-    pre { white-space:pre-wrap; background:#111827; padding:10px; border-radius:10px; border:1px solid rgba(255,255,255,.08); }
   </style>
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
 </head>
@@ -37,11 +36,9 @@
 
   <canvas id="chart"></canvas>
 
-  <h3>Last message</h3>
-  <pre id="last">--</pre>
-
 <script>
   const WS_URL = "wss://ni-live-monitor.yanovichvitaliy.workers.dev/ws";
+
   const dot = document.getElementById("dot");
   const st  = document.getElementById("st");
   const upd = document.getElementById("upd");
@@ -49,7 +46,6 @@
   const el0 = document.getElementById("ai0");
   const el1 = document.getElementById("ai1");
   const el2 = document.getElementById("ai2");
-  const last = document.getElementById("last");
 
   function setStatus(text, mode){
     st.textContent = text;
@@ -84,14 +80,22 @@
     }
   });
 
-  // Keep a rolling series in the browser for smooth live view
-  const MAX_POINTS = 600; // ~10 minutes at 1Hz updates (we add 1 point per update)
+  // Rolling series in browser
+  const MAX_POINTS = 600;
   let t0 = null;
   let lastUpdatedAtMs = null;
 
+  // We will mark "LIVE" only after we receive at least one real update
+  let gotRealUpdate = false;
+
+  function effectiveTimestamp(payload){
+    // Prefer server receive time for age correctness
+    return payload._received_at || payload.updated_at || null;
+  }
+
   function pushPoint(payload){
-    const u = payload.updated_at || payload._received_at;
-    const ms = Date.parse(u);
+    const ts = effectiveTimestamp(payload);
+    const ms = ts ? Date.parse(ts) : NaN;
     if (!Number.isFinite(ms)) return;
 
     if (t0 === null) t0 = ms;
@@ -99,15 +103,11 @@
 
     const x = (ms - t0) / 1000.0;
     const latest = payload.latest || {};
-    const y0 = Number(latest.ai0);
-    const y1 = Number(latest.ai1);
-    const y2 = Number(latest.ai2);
 
-    chart.data.datasets[0].data.push({x, y:y0});
-    chart.data.datasets[1].data.push({x, y:y1});
-    chart.data.datasets[2].data.push({x, y:y2});
+    chart.data.datasets[0].data.push({ x, y: Number(latest.ai0) });
+    chart.data.datasets[1].data.push({ x, y: Number(latest.ai1) });
+    chart.data.datasets[2].data.push({ x, y: Number(latest.ai2) });
 
-    // trim
     for (const ds of chart.data.datasets){
       if (ds.data.length > MAX_POINTS) ds.data.splice(0, ds.data.length - MAX_POINTS);
     }
@@ -120,6 +120,13 @@
     if (!lastUpdatedAtMs) return;
     const s = Math.max(0, Math.round((Date.now() - lastUpdatedAtMs) / 1000));
     age.textContent = String(s);
+
+    if (!gotRealUpdate) {
+      // before first update: show cached/connecting state
+      setStatus("CACHED (waiting live)", "");
+      return;
+    }
+
     if (s <= 5) setStatus("LIVE", "ok");
     else if (s <= 30) setStatus("STALE", "");
     else setStatus("OFFLINE", "bad");
@@ -133,10 +140,12 @@
   ws.onerror = () => setStatus("ERROR", "bad");
 
   ws.onmessage = (e) => {
-    last.textContent = e.data;
-
     let msg;
     try { msg = JSON.parse(e.data); } catch { return; }
+
+    // msg.type: "latest" or "update"
+    if (msg.type === "update") gotRealUpdate = true;
+
     const payload = msg.data || null;
     if (!payload) return;
 
@@ -145,8 +154,8 @@
     el1.textContent = fmtV(latest.ai1);
     el2.textContent = fmtV(latest.ai2);
 
-    const u = payload.updated_at || payload._received_at || "--";
-    upd.textContent = u;
+    const ts = effectiveTimestamp(payload);
+    upd.textContent = ts || "--";
 
     pushPoint(payload);
   };
