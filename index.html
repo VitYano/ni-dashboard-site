@@ -1,173 +1,303 @@
 <!doctype html>
-<html>
+<html lang="uk">
 <head>
-<meta charset="utf-8">
-<title>NI Dashboard</title>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>NI Live Dashboard</title>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+  <style>
+    body {
+      margin: 0;
+      padding: 20px;
+      font-family: Arial, sans-serif;
+      background: #0f172a;
+      color: #e2e8f0;
+    }
 
-<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    h1 {
+      margin-top: 0;
+      margin-bottom: 20px;
+    }
 
-<style>
+    .status-bar {
+      display: flex;
+      gap: 12px;
+      flex-wrap: wrap;
+      margin-bottom: 20px;
+    }
 
-body{
-background:#0f172a;
-color:white;
-font-family:Arial;
-padding:20px;
-}
+    .pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 10px;
+      padding: 8px 12px;
+      border-radius: 999px;
+      background: rgba(255,255,255,.06);
+      border: 1px solid rgba(255,255,255,.08);
+      font-weight: 700;
+    }
 
-canvas{
-background:#1e293b;
-margin-bottom:40px;
-}
+    .dot {
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      background: #fbbf24;
+    }
 
-</style>
+    .ok { background: #22c55e; }
+    .bad { background: #ef4444; }
 
+    .charts {
+      display: grid;
+      grid-template-columns: 1fr;
+      gap: 24px;
+    }
+
+    .card {
+      background: #1e293b;
+      border: 1px solid rgba(255,255,255,.08);
+      border-radius: 14px;
+      padding: 16px;
+    }
+
+    .chart-title {
+      margin: 0 0 12px 0;
+      font-size: 20px;
+    }
+
+    .stats {
+      margin: 0 0 12px 0;
+      color: #94a3b8;
+      font-size: 14px;
+    }
+
+    canvas {
+      width: 100%;
+      height: 320px;
+    }
+  </style>
 </head>
-
 <body>
+  <h1>NI Live Dashboard</h1>
 
-<h2>AI0</h2>
-<canvas id="chart0"></canvas>
+  <div class="status-bar">
+    <div class="pill"><span id="dot" class="dot"></span><span id="statusText">CONNECTING...</span></div>
+    <div class="pill">Updated: <span id="updatedAt">--</span></div>
+    <div class="pill">Age: <span id="ageSec">--</span>s</div>
+  </div>
 
-<h2>AI1</h2>
-<canvas id="chart1"></canvas>
+  <div class="charts">
+    <div class="card">
+      <h2 class="chart-title">AI0</h2>
+      <div class="stats" id="stats0">mean -- | min -- | max --</div>
+      <canvas id="chart0"></canvas>
+    </div>
 
-<h2>AI2</h2>
-<canvas id="chart2"></canvas>
+    <div class="card">
+      <h2 class="chart-title">AI1</h2>
+      <div class="stats" id="stats1">mean -- | min -- | max --</div>
+      <canvas id="chart1"></canvas>
+    </div>
+
+    <div class="card">
+      <h2 class="chart-title">AI2</h2>
+      <div class="stats" id="stats2">mean -- | min -- | max --</div>
+      <canvas id="chart2"></canvas>
+    </div>
+  </div>
 
 <script>
+  const WS_URL = "wss://ni-live-monitor.yanovichvitaliy.workers.dev/ws";
+  const STORAGE_KEY = "ni_dashboard_minmax_v1";
+  const MAX_POINTS = 1000;
 
-const WS="wss://ni-live-monitor.yanovichvitaliy.workers.dev/ws"
+  const dot = document.getElementById("dot");
+  const statusText = document.getElementById("statusText");
+  const updatedAt = document.getElementById("updatedAt");
+  const ageSec = document.getElementById("ageSec");
 
-const MAX_POINTS=500
+  const stats0 = document.getElementById("stats0");
+  const stats1 = document.getElementById("stats1");
+  const stats2 = document.getElementById("stats2");
 
-function createChart(id){
+  let lastUpdatedAtMs = null;
 
-return new Chart(document.getElementById(id),{
+  function setStatus(text, mode) {
+    statusText.textContent = text;
+    dot.className = "dot " + (mode === "ok" ? "ok" : mode === "bad" ? "bad" : "");
+  }
 
-type:"line",
+  function fmt(value) {
+    const n = Number(value);
+    return Number.isFinite(n) ? n.toFixed(5) : "--";
+  }
 
-data:{
-labels:[],
-datasets:[
+  function makeChart(canvasId, label) {
+    const ctx = document.getElementById(canvasId).getContext("2d");
 
-{
-label:"mean",
-data:[],
-borderColor:"#22c55e",
-fill:false
-},
+    return new Chart(ctx, {
+      type: "line",
+      data: {
+        datasets: [
+          {
+            label: label + " max",
+            data: [],
+            borderColor: "rgba(0,0,0,0)",
+            pointRadius: 0,
+            fill: false
+          },
+          {
+            label: label + " min",
+            data: [],
+            borderColor: "rgba(0,0,0,0)",
+            backgroundColor: "rgba(34,197,94,0.18)",
+            pointRadius: 0,
+            fill: "-1"
+          },
+          {
+            label: label + " mean",
+            data: [],
+            borderColor: "#22c55e",
+            backgroundColor: "#22c55e",
+            pointRadius: 2,
+            tension: 0.15,
+            fill: false
+          }
+        ]
+      },
+      options: {
+        responsive: true,
+        animation: false,
+        parsing: false,
+        normalized: true,
+        scales: {
+          x: {
+            type: "linear",
+            title: { display: true, text: "t (s)" }
+          },
+          y: {
+            title: { display: true, text: "V" }
+          }
+        },
+        plugins: {
+          legend: {
+            labels: { color: "#e2e8f0" }
+          }
+        }
+      }
+    });
+  }
 
-{
-label:"max",
-data:[],
-borderColor:"rgba(0,0,0,0)",
-backgroundColor:"rgba(34,197,94,0.2)",
-fill:"+1"
-},
+  const chart0 = makeChart("chart0", "AI0");
+  const chart1 = makeChart("chart1", "AI1");
+  const chart2 = makeChart("chart2", "AI2");
 
-{
-label:"min",
-data:[],
-borderColor:"rgba(0,0,0,0)",
-fill:false
-}
+  function saveCharts() {
+    const payload = {
+      chart0: chart0.data.datasets,
+      chart1: chart1.data.datasets,
+      chart2: chart2.data.datasets,
+      lastUpdatedAtMs
+    };
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(payload));
+  }
 
-]
-},
+  function loadCharts() {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if (!raw) return;
 
-options:{
-animation:false,
-responsive:true
-}
+    try {
+      const saved = JSON.parse(raw);
 
-})
+      if (saved.chart0) chart0.data.datasets = saved.chart0;
+      if (saved.chart1) chart1.data.datasets = saved.chart1;
+      if (saved.chart2) chart2.data.datasets = saved.chart2;
+      if (saved.lastUpdatedAtMs) lastUpdatedAtMs = saved.lastUpdatedAtMs;
 
-}
+      chart0.update("none");
+      chart1.update("none");
+      chart2.update("none");
+    } catch (e) {
+      console.error("Failed to load saved charts", e);
+    }
+  }
 
-const chart0=createChart("chart0")
-const chart1=createChart("chart1")
-const chart2=createChart("chart2")
+  function appendPoint(chart, x, mean, min, max) {
+    const dsMax = chart.data.datasets[0].data;
+    const dsMin = chart.data.datasets[1].data;
+    const dsMean = chart.data.datasets[2].data;
 
+    const lastMean = dsMean.length ? dsMean[dsMean.length - 1] : null;
+    if (lastMean && lastMean.x === x) return;
 
-function push(chart,time,mean,min,max){
+    dsMax.push({ x, y: max });
+    dsMin.push({ x, y: min });
+    dsMean.push({ x, y: mean });
 
-chart.data.labels.push(time)
+    if (dsMean.length > MAX_POINTS) {
+      dsMax.splice(0, dsMax.length - MAX_POINTS);
+      dsMin.splice(0, dsMin.length - MAX_POINTS);
+      dsMean.splice(0, dsMean.length - MAX_POINTS);
+    }
 
-chart.data.datasets[0].data.push(mean)
-chart.data.datasets[1].data.push(max)
-chart.data.datasets[2].data.push(min)
+    chart.update("none");
+  }
 
-if(chart.data.labels.length>MAX_POINTS){
+  loadCharts();
 
-chart.data.labels.shift()
+  setInterval(() => {
+    if (!lastUpdatedAtMs) return;
 
-chart.data.datasets.forEach(d=>d.data.shift())
+    const age = Math.max(0, Math.round((Date.now() - lastUpdatedAtMs) / 1000));
+    ageSec.textContent = String(age);
 
-}
+    if (age <= 10) setStatus("LIVE", "ok");
+    else if (age <= 30) setStatus("STALE", "");
+    else setStatus("OFFLINE", "bad");
+  }, 1000);
 
-chart.update()
+  const ws = new WebSocket(WS_URL);
 
-}
+  ws.onopen = () => setStatus("CONNECTED", "ok");
+  ws.onclose = () => setStatus("CLOSED", "bad");
+  ws.onerror = () => setStatus("ERROR", "bad");
 
+  ws.onmessage = (e) => {
+    let msg;
+    try {
+      msg = JSON.parse(e.data);
+    } catch {
+      return;
+    }
 
-function save(){
+    const payload = msg.data || null;
+    if (!payload || !payload.channels) return;
 
-localStorage.setItem("niCharts",JSON.stringify({
+    const ts = payload._received_at || payload.updated_at || null;
+    if (!ts) return;
 
-c0:chart0.data,
-c1:chart1.data,
-c2:chart2.data
+    const ms = Date.parse(ts);
+    if (!Number.isFinite(ms)) return;
 
-}))
+    lastUpdatedAtMs = ms;
+    updatedAt.textContent = ts;
 
-}
+    const c0 = payload.channels.ai0;
+    const c1 = payload.channels.ai1;
+    const c2 = payload.channels.ai2;
 
+    stats0.textContent = `mean ${fmt(c0.mean)} | min ${fmt(c0.min)} | max ${fmt(c0.max)}`;
+    stats1.textContent = `mean ${fmt(c1.mean)} | min ${fmt(c1.min)} | max ${fmt(c1.max)}`;
+    stats2.textContent = `mean ${fmt(c2.mean)} | min ${fmt(c2.min)} | max ${fmt(c2.max)}`;
 
-function load(){
+    const x = ms / 1000.0;
 
-const s=localStorage.getItem("niCharts")
+    appendPoint(chart0, x, Number(c0.mean), Number(c0.min), Number(c0.max));
+    appendPoint(chart1, x, Number(c1.mean), Number(c1.min), Number(c1.max));
+    appendPoint(chart2, x, Number(c2.mean), Number(c2.min), Number(c2.max));
 
-if(!s)return
-
-const d=JSON.parse(s)
-
-chart0.data=d.c0
-chart1.data=d.c1
-chart2.data=d.c2
-
-chart0.update()
-chart1.update()
-chart2.update()
-
-}
-
-load()
-
-
-const ws=new WebSocket(WS)
-
-ws.onmessage=e=>{
-
-const msg=JSON.parse(e.data)
-
-const p=msg.data
-
-if(!p)return
-
-const t=p.updated_at
-
-push(chart0,t,p.channels.ai0.mean,p.channels.ai0.min,p.channels.ai0.max)
-
-push(chart1,t,p.channels.ai1.mean,p.channels.ai1.min,p.channels.ai1.max)
-
-push(chart2,t,p.channels.ai2.mean,p.channels.ai2.min,p.channels.ai2.max)
-
-save()
-
-}
-
+    saveCharts();
+  };
 </script>
-
 </body>
 </html>
