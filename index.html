@@ -1,164 +1,173 @@
 <!doctype html>
-<html lang="uk">
+<html>
 <head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>NI Live Dashboard</title>
-  <style>
-    body { font-family: Arial, sans-serif; padding:16px; background:#0f172a; color:#e2e8f0; }
-    .row { display:flex; gap:12px; flex-wrap:wrap; margin-bottom:12px; }
-    .card { background:#1e293b; border:1px solid rgba(255,255,255,.08); border-radius:14px; padding:12px 14px; min-width:220px; }
-    .k { color:#94a3b8; font-size:13px; margin-bottom:6px; }
-    .v { font-size:24px; font-weight:700; }
-    .pill { display:inline-flex; align-items:center; gap:10px; padding:8px 12px; border-radius:999px;
-            background:rgba(255,255,255,.06); border:1px solid rgba(255,255,255,.08); font-weight:700; }
-    .dot { width:10px; height:10px; border-radius:50%; background:#fbbf24; }
-    .ok  { background:#22c55e; }
-    .bad { background:#ef4444; }
-    canvas { width:100%; height:420px; background:#1e293b; border-radius:14px; border:1px solid rgba(255,255,255,.08); }
-  </style>
-  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+<meta charset="utf-8">
+<title>NI Dashboard</title>
+
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+<style>
+
+body{
+background:#0f172a;
+color:white;
+font-family:Arial;
+padding:20px;
+}
+
+canvas{
+background:#1e293b;
+margin-bottom:40px;
+}
+
+</style>
+
 </head>
+
 <body>
-  <h2>NI Live Dashboard</h2>
 
-  <div class="row">
-    <div class="pill"><span id="dot" class="dot"></span><span id="st">CONNECTING...</span></div>
-    <div class="pill">Updated: <span id="upd">--</span></div>
-    <div class="pill">Age: <span id="age">--</span>s</div>
-  </div>
+<h2>AI0</h2>
+<canvas id="chart0"></canvas>
 
-  <div class="row">
-    <div class="card"><div class="k">AI0</div><div class="v" id="ai0">--</div></div>
-    <div class="card"><div class="k">AI1</div><div class="v" id="ai1">--</div></div>
-    <div class="card"><div class="k">AI2</div><div class="v" id="ai2">--</div></div>
-  </div>
+<h2>AI1</h2>
+<canvas id="chart1"></canvas>
 
-  <canvas id="chart"></canvas>
+<h2>AI2</h2>
+<canvas id="chart2"></canvas>
 
 <script>
-  const WS_URL = "wss://ni-live-monitor.yanovichvitaliy.workers.dev/ws";
 
-  const dot = document.getElementById("dot");
-  const st  = document.getElementById("st");
-  const upd = document.getElementById("upd");
-  const age = document.getElementById("age");
-  const el0 = document.getElementById("ai0");
-  const el1 = document.getElementById("ai1");
-  const el2 = document.getElementById("ai2");
+const WS="wss://ni-live-monitor.yanovichvitaliy.workers.dev/ws"
 
-  function setStatus(text, mode){
-    st.textContent = text;
-    dot.className = "dot " + (mode === "ok" ? "ok" : mode === "bad" ? "bad" : "");
-  }
+const MAX_POINTS=500
 
-  function fmtV(x){
-    const n = Number(x);
-    return Number.isFinite(n) ? n.toFixed(5) + " V" : "--";
-  }
+function createChart(id){
 
-  // Chart setup
-  const ctx = document.getElementById("chart").getContext("2d");
-  const chart = new Chart(ctx, {
-    type: "line",
-    data: {
-      datasets: [
-        { label: "AI0", data: [] },
-        { label: "AI1", data: [] },
-        { label: "AI2", data: [] },
-      ]
-    },
-    options: {
-      responsive: true,
-      animation: false,
-      parsing: false,
-      normalized: true,
-      scales: {
-        x: { type: "linear", title: { display: true, text: "t (s)" } },
-        y: { title: { display: true, text: "V" } }
-      }
-    }
-  });
+return new Chart(document.getElementById(id),{
 
-  // Rolling series in browser
-  const MAX_POINTS = 600;
-  let t0 = null;
-  let lastUpdatedAtMs = null;
+type:"line",
 
-  // We will mark "LIVE" only after we receive at least one real update
-  let gotRealUpdate = false;
+data:{
+labels:[],
+datasets:[
 
-  function effectiveTimestamp(payload){
-    // Prefer server receive time for age correctness
-    return payload._received_at || payload.updated_at || null;
-  }
+{
+label:"mean",
+data:[],
+borderColor:"#22c55e",
+fill:false
+},
 
-  function pushPoint(payload){
-    const ts = effectiveTimestamp(payload);
-    const ms = ts ? Date.parse(ts) : NaN;
-    if (!Number.isFinite(ms)) return;
+{
+label:"max",
+data:[],
+borderColor:"rgba(0,0,0,0)",
+backgroundColor:"rgba(34,197,94,0.2)",
+fill:"+1"
+},
 
-    if (t0 === null) t0 = ms;
-    lastUpdatedAtMs = ms;
+{
+label:"min",
+data:[],
+borderColor:"rgba(0,0,0,0)",
+fill:false
+}
 
-    const x = (ms - t0) / 1000.0;
-    const latest = payload.latest || {};
+]
+},
 
-    chart.data.datasets[0].data.push({ x, y: Number(latest.ai0) });
-    chart.data.datasets[1].data.push({ x, y: Number(latest.ai1) });
-    chart.data.datasets[2].data.push({ x, y: Number(latest.ai2) });
+options:{
+animation:false,
+responsive:true
+}
 
-    for (const ds of chart.data.datasets){
-      if (ds.data.length > MAX_POINTS) ds.data.splice(0, ds.data.length - MAX_POINTS);
-    }
+})
 
-    chart.update("none");
-  }
+}
 
-  // Age ticker
-  setInterval(() => {
-    if (!lastUpdatedAtMs) return;
-    const s = Math.max(0, Math.round((Date.now() - lastUpdatedAtMs) / 1000));
-    age.textContent = String(s);
+const chart0=createChart("chart0")
+const chart1=createChart("chart1")
+const chart2=createChart("chart2")
 
-    if (!gotRealUpdate) {
-      // before first update: show cached/connecting state
-      setStatus("CACHED (waiting live)", "");
-      return;
-    }
 
-    if (s <= 5) setStatus("LIVE", "ok");
-    else if (s <= 30) setStatus("STALE", "");
-    else setStatus("OFFLINE", "bad");
-  }, 1000);
+function push(chart,time,mean,min,max){
 
-  // WebSocket
-  const ws = new WebSocket(WS_URL);
+chart.data.labels.push(time)
 
-  ws.onopen = () => setStatus("CONNECTED", "ok");
-  ws.onclose = () => setStatus("CLOSED", "bad");
-  ws.onerror = () => setStatus("ERROR", "bad");
+chart.data.datasets[0].data.push(mean)
+chart.data.datasets[1].data.push(max)
+chart.data.datasets[2].data.push(min)
 
-  ws.onmessage = (e) => {
-    let msg;
-    try { msg = JSON.parse(e.data); } catch { return; }
+if(chart.data.labels.length>MAX_POINTS){
 
-    // msg.type: "latest" or "update"
-    if (msg.type === "update") gotRealUpdate = true;
+chart.data.labels.shift()
 
-    const payload = msg.data || null;
-    if (!payload) return;
+chart.data.datasets.forEach(d=>d.data.shift())
 
-    const latest = payload.latest || {};
-    el0.textContent = fmtV(latest.ai0);
-    el1.textContent = fmtV(latest.ai1);
-    el2.textContent = fmtV(latest.ai2);
+}
 
-    const ts = effectiveTimestamp(payload);
-    upd.textContent = ts || "--";
+chart.update()
 
-    pushPoint(payload);
-  };
+}
+
+
+function save(){
+
+localStorage.setItem("niCharts",JSON.stringify({
+
+c0:chart0.data,
+c1:chart1.data,
+c2:chart2.data
+
+}))
+
+}
+
+
+function load(){
+
+const s=localStorage.getItem("niCharts")
+
+if(!s)return
+
+const d=JSON.parse(s)
+
+chart0.data=d.c0
+chart1.data=d.c1
+chart2.data=d.c2
+
+chart0.update()
+chart1.update()
+chart2.update()
+
+}
+
+load()
+
+
+const ws=new WebSocket(WS)
+
+ws.onmessage=e=>{
+
+const msg=JSON.parse(e.data)
+
+const p=msg.data
+
+if(!p)return
+
+const t=p.updated_at
+
+push(chart0,t,p.channels.ai0.mean,p.channels.ai0.min,p.channels.ai0.max)
+
+push(chart1,t,p.channels.ai1.mean,p.channels.ai1.min,p.channels.ai1.max)
+
+push(chart2,t,p.channels.ai2.mean,p.channels.ai2.min,p.channels.ai2.max)
+
+save()
+
+}
+
 </script>
+
 </body>
 </html>
