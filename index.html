@@ -148,9 +148,8 @@
   </div>
 
 <script>
+  const API_BASE = "https://ni-live-monitor.yanovichvitaliy.workers.dev";
   const WS_URL = "wss://ni-live-monitor.yanovichvitaliy.workers.dev/ws";
-  const LATEST_URL = "https://ni-live-monitor.yanovichvitaliy.workers.dev/latest";
-  const STORAGE_KEY = "ni_dashboard_run_storage_v1";
   const MAX_POINTS = 1000;
 
   const dot = document.getElementById("dot");
@@ -164,9 +163,9 @@
   const stats1 = document.getElementById("stats1");
   const stats2 = document.getElementById("stats2");
 
-  let lastUpdatedAtMs = null;
   let activeRunId = null;
-  let t0Sec = null;
+  let runStartMs = null;
+  let lastUpdatedAtMs = null;
 
   function setStatus(text, mode) {
     statusText.textContent = text;
@@ -254,54 +253,23 @@
     clearChart(chart2);
   }
 
-  function saveCharts() {
-    const payload = {
-      runId: activeRunId,
-      t0Sec,
-      lastUpdatedAtMs,
-      chart0: chart0.data.datasets,
-      chart1: chart1.data.datasets,
-      chart2: chart2.data.datasets
-    };
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(payload));
+  function resetStatsText() {
+    stats0.textContent = "mean -- | min -- | max --";
+    stats1.textContent = "mean -- | min -- | max --";
+    stats2.textContent = "mean -- | min -- | max --";
   }
 
-  async function restoreChartsIfSameRun() {
-    const raw = localStorage.getItem(STORAGE_KEY);
-    if (!raw) return;
+  function switchToRun(payload) {
+    activeRunId = payload.run_id || null;
+    runStartMs = payload.run_started_at ? Date.parse(payload.run_started_at) : null;
+    runIdText.textContent = activeRunId || "--";
+    fileNameText.textContent = payload.file_name || "--";
+    updatedAt.textContent = payload.updated_at || "--";
+    ageSec.textContent = "0";
+    lastUpdatedAtMs = null;
 
-    try {
-      const saved = JSON.parse(raw);
-
-      const resp = await fetch(LATEST_URL, { cache: "no-store" });
-      if (!resp.ok) {
-        localStorage.removeItem(STORAGE_KEY);
-        return;
-      }
-
-      const latest = await resp.json();
-      if (!latest || !latest.run_id || !saved.runId || latest.run_id !== saved.runId) {
-        localStorage.removeItem(STORAGE_KEY);
-        return;
-      }
-
-      activeRunId = saved.runId;
-      t0Sec = saved.t0Sec ?? null;
-      lastUpdatedAtMs = saved.lastUpdatedAtMs ?? null;
-
-      if (saved.chart0) chart0.data.datasets = saved.chart0;
-      if (saved.chart1) chart1.data.datasets = saved.chart1;
-      if (saved.chart2) chart2.data.datasets = saved.chart2;
-
-      chart0.update("none");
-      chart1.update("none");
-      chart2.update("none");
-
-      runIdText.textContent = activeRunId;
-    } catch (e) {
-      console.error("Restore error", e);
-      localStorage.removeItem(STORAGE_KEY);
-    }
+    clearAllCharts();
+    resetStatsText();
   }
 
   function appendPoint(chart, x, mean, min, max) {
@@ -325,26 +293,65 @@
     chart.update("none");
   }
 
-  function switchToRun(payload) {
-    activeRunId = payload.run_id || null;
-    runIdText.textContent = activeRunId || "--";
+  function applyPayload(payload) {
+    if (!payload || !payload.channels) return;
+
+    if (!activeRunId || payload.run_id !== activeRunId) {
+      switchToRun(payload);
+    }
+
+    if (!runStartMs && payload.run_started_at) {
+      runStartMs = Date.parse(payload.run_started_at);
+    }
+
+    const ts = payload._received_at || payload.updated_at || null;
+    if (!ts) return;
+
+    const ms = Date.parse(ts);
+    if (!Number.isFinite(ms)) return;
+
+    lastUpdatedAtMs = ms;
+    updatedAt.textContent = ts;
+    runIdText.textContent = payload.run_id || "--";
     fileNameText.textContent = payload.file_name || "--";
 
-    clearAllCharts();
-    localStorage.removeItem(STORAGE_KEY);
+    const c0 = payload.channels.ai0;
+    const c1 = payload.channels.ai1;
+    const c2 = payload.channels.ai2;
 
-    t0Sec = null;
-    lastUpdatedAtMs = null;
+    stats0.textContent = `mean ${fmt(c0.mean)} | min ${fmt(c0.min)} | max ${fmt(c0.max)}`;
+    stats1.textContent = `mean ${fmt(c1.mean)} | min ${fmt(c1.min)} | max ${fmt(c1.max)}`;
+    stats2.textContent = `mean ${fmt(c2.mean)} | min ${fmt(c2.min)} | max ${fmt(c2.max)}`;
 
-    stats0.textContent = "mean -- | min -- | max --";
-    stats1.textContent = "mean -- | min -- | max --";
-    stats2.textContent = "mean -- | min -- | max --";
+    const x = runStartMs ? ((ms - runStartMs) / 1000.0) : (ms / 1000.0);
 
-    updatedAt.textContent = payload.updated_at || "--";
-    ageSec.textContent = "0";
+    appendPoint(chart0, x, Number(c0.mean), Number(c0.min), Number(c0.max));
+    appendPoint(chart1, x, Number(c1.mean), Number(c1.min), Number(c1.max));
+    appendPoint(chart2, x, Number(c2.mean), Number(c2.min), Number(c2.max));
   }
 
-  restoreChartsIfSameRun();
+  async function loadHistory() {
+    try {
+      const resp = await fetch(API_BASE + "/history", { cache: "no-store" });
+      if (!resp.ok) return;
+
+      const snapshot = await resp.json();
+      if (!snapshot || !snapshot.run_id) return;
+
+      switchToRun({
+        run_id: snapshot.run_id,
+        run_started_at: snapshot.run_started_at,
+        file_name: snapshot.file_name,
+        updated_at: snapshot.latest?.updated_at || snapshot.run_started_at,
+      });
+
+      for (const point of snapshot.points || []) {
+        applyPayload(point);
+      }
+    } catch (e) {
+      console.error("History load failed", e);
+    }
+  }
 
   setInterval(() => {
     if (!lastUpdatedAtMs) return;
@@ -357,77 +364,38 @@
     else setStatus("OFFLINE", "bad");
   }, 1000);
 
-  const ws = new WebSocket(WS_URL);
+  async function start() {
+    await loadHistory();
 
-  ws.onopen = () => setStatus("CONNECTED", "ok");
-  ws.onclose = () => setStatus("CLOSED", "bad");
-  ws.onerror = () => setStatus("ERROR", "bad");
+    const ws = new WebSocket(WS_URL);
 
-  ws.onmessage = (e) => {
-    let msg;
-    try {
-      msg = JSON.parse(e.data);
-    } catch {
-      return;
-    }
+    ws.onopen = () => setStatus("CONNECTED", "ok");
+    ws.onclose = () => setStatus("CLOSED", "bad");
+    ws.onerror = () => setStatus("ERROR", "bad");
 
-    const payload = msg.data || null;
-    if (!payload) return;
-
-    const incomingRunId = payload.run_id || null;
-
-    // якщо це новий запуск — очищаємо графіки
-    if (payload.reset === true || (incomingRunId && activeRunId && incomingRunId !== activeRunId)) {
-      switchToRun(payload);
-      setStatus("NEW RUN", "ok");
-
-      // reset-пакет може не містити channels
-      if (!payload.channels) {
-        saveCharts();
+    ws.onmessage = (e) => {
+      let msg;
+      try {
+        msg = JSON.parse(e.data);
+      } catch {
         return;
       }
-    }
 
-    if (!activeRunId && incomingRunId) {
-      activeRunId = incomingRunId;
-      runIdText.textContent = activeRunId;
-    }
+      const payload = msg.data || null;
+      if (!payload) return;
 
-    fileNameText.textContent = payload.file_name || "--";
+      if (msg.type === "reset" || payload.reset === true) {
+        switchToRun(payload);
+        setStatus("NEW RUN", "ok");
+        return;
+      }
 
-    if (!payload.channels) return;
+      applyPayload(payload);
+      setStatus("LIVE", "ok");
+    };
+  }
 
-    const ts = payload._received_at || payload.updated_at || null;
-    if (!ts) return;
-
-    const ms = Date.parse(ts);
-    if (!Number.isFinite(ms)) return;
-
-    if (t0Sec === null) {
-      const baseMs = Date.parse(payload.run_started_at || ts);
-      t0Sec = Number.isFinite(baseMs) ? baseMs / 1000.0 : ms / 1000.0;
-    }
-
-    lastUpdatedAtMs = ms;
-    updatedAt.textContent = ts;
-
-    const c0 = payload.channels.ai0;
-    const c1 = payload.channels.ai1;
-    const c2 = payload.channels.ai2;
-
-    stats0.textContent = `mean ${fmt(c0.mean)} | min ${fmt(c0.min)} | max ${fmt(c0.max)}`;
-    stats1.textContent = `mean ${fmt(c1.mean)} | min ${fmt(c1.min)} | max ${fmt(c1.max)}`;
-    stats2.textContent = `mean ${fmt(c2.mean)} | min ${fmt(c2.min)} | max ${fmt(c2.max)}`;
-
-    const x = (ms / 1000.0) - t0Sec;
-
-    appendPoint(chart0, x, Number(c0.mean), Number(c0.min), Number(c0.max));
-    appendPoint(chart1, x, Number(c1.mean), Number(c1.min), Number(c1.max));
-    appendPoint(chart2, x, Number(c2.mean), Number(c2.min), Number(c2.max));
-
-    saveCharts();
-    setStatus("LIVE", "ok");
-  };
+  start();
 </script>
 </body>
 </html>
