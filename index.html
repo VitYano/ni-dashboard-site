@@ -1,401 +1,231 @@
-<!doctype html>
-<html lang="uk">
-<head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>NI Live Dashboard</title>
-  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
-  <style>
-    * { box-sizing: border-box; }
+from __future__ import annotations
 
-    html, body {
-      margin: 0;
-      padding: 0;
-      width: 100%;
-      height: 100%;
-      overflow: hidden;
-      font-family: Arial, sans-serif;
-      background: #0f172a;
-      color: #e2e8f0;
+from datetime import datetime, timezone
+from pathlib import Path
+from typing import Any
+
+import nidaqmx
+import numpy as np
+import requests
+from nidaqmx.constants import (
+    AcquisitionType,
+    LoggingMode,
+    LoggingOperation,
+)
+from nidaqmx.stream_readers import AnalogMultiChannelReader
+
+
+# ============================================================
+# NI SETTINGS
+# ============================================================
+DEVICE_NAME = "cDAQ9181-1C9B71DMod1"
+CHANNELS = ("ai0", "ai1", "ai2")
+
+MIN_VOLTAGE = -10.0
+MAX_VOLTAGE = 10.0
+
+RATE_HZ = 400.0
+
+# читаємо стабільно по 1 секунді
+READ_SECONDS = 1.0
+SAMPLES_PER_READ = int(RATE_HZ * READ_SECONDS)
+
+# на сайт відправляємо агреговані дані раз на 5 секунд
+BATCH_SECONDS = 5.0
+READS_PER_BATCH = int(BATCH_SECONDS / READ_SECONDS)
+SAMPLES_PER_BATCH = SAMPLES_PER_READ * READS_PER_BATCH
+
+DAQ_BUFFER_SECONDS = 10.0
+DAQ_BUFFER_SAMPLES = int(RATE_HZ * DAQ_BUFFER_SECONDS)
+
+READ_TIMEOUT_SECONDS = READ_SECONDS + 5.0
+
+
+# ============================================================
+# CLOUDFARE SETTINGS
+# ============================================================
+WORKER_URL = "https://ni-live-monitor.yanovichvitaliy.workers.dev"
+INGEST_TOKEN = "PUT_YOUR_NEW_ASCII_TOKEN_HERE"
+
+
+# ============================================================
+# FILE SETTINGS
+# ============================================================
+BASE_DIR = Path(__file__).resolve().parent
+DATA_DIR = BASE_DIR / "data"
+DATA_DIR.mkdir(parents=True, exist_ok=True)
+
+
+# ============================================================
+# HELPERS
+# ============================================================
+def utc_now() -> datetime:
+    return datetime.now(timezone.utc)
+
+
+def iso_utc(dt: datetime) -> str:
+    return dt.astimezone(timezone.utc).isoformat(timespec="milliseconds").replace("+00:00", "Z")
+
+
+def make_run_id(dt: datetime) -> str:
+    return dt.strftime("%Y%m%d_%H%M%S")
+
+
+def calc_stats(samples_1d: np.ndarray) -> dict[str, float]:
+    return {
+        "mean": float(np.mean(samples_1d)),
+        "min": float(np.min(samples_1d)),
+        "max": float(np.max(samples_1d)),
     }
 
-    body { padding: 10px; }
 
-    .app {
-      height: calc(100vh - 20px);
-      display: grid;
-      grid-template-rows: auto auto 1fr;
-      gap: 10px;
+def create_tdms_file_path(run_id: str) -> Path:
+    return DATA_DIR / f"ni_measurements_{run_id}.tdms"
+
+
+def build_reset_payload(run_id: str, run_started_at: datetime, tdms_file: Path) -> dict[str, Any]:
+    return {
+        "reset": True,
+        "run_id": run_id,
+        "run_started_at": iso_utc(run_started_at),
+        "updated_at": iso_utc(run_started_at),
+        "file_name": tdms_file.name,
+        "device": DEVICE_NAME,
+        "channels": None,
     }
 
-    h1 {
-      margin: 0;
-      font-size: 22px;
-      line-height: 1.2;
-    }
 
-    .status-bar {
-      display: flex;
-      gap: 8px;
-      flex-wrap: wrap;
-    }
-
-    .pill {
-      display: inline-flex;
-      align-items: center;
-      gap: 8px;
-      padding: 6px 10px;
-      border-radius: 999px;
-      background: rgba(255,255,255,.06);
-      border: 1px solid rgba(255,255,255,.08);
-      font-weight: 700;
-      font-size: 13px;
-    }
-
-    .dot {
-      width: 9px;
-      height: 9px;
-      border-radius: 50%;
-      background: #fbbf24;
-    }
-
-    .ok { background: #22c55e; }
-    .bad { background: #ef4444; }
-
-    .charts {
-      min-height: 0;
-      display: grid;
-      grid-template-columns: repeat(3, 1fr);
-      gap: 10px;
-    }
-
-    .card {
-      min-height: 0;
-      display: grid;
-      grid-template-rows: auto auto 1fr;
-      background: #1e293b;
-      border: 1px solid rgba(255,255,255,.08);
-      border-radius: 12px;
-      padding: 10px;
-    }
-
-    .chart-title {
-      margin: 0 0 6px 0;
-      font-size: 18px;
-      line-height: 1.2;
-    }
-
-    .stats {
-      margin: 0 0 6px 0;
-      color: #94a3b8;
-      font-size: 12px;
-      line-height: 1.3;
-      white-space: nowrap;
-      overflow: hidden;
-      text-overflow: ellipsis;
-    }
-
-    .canvas-wrap {
-      min-height: 0;
-      position: relative;
-    }
-
-    .canvas-wrap canvas {
-      width: 100% !important;
-      height: 100% !important;
-      display: block;
-    }
-
-    @media (max-width: 900px) {
-      html, body { overflow: auto; }
-      .app { height: auto; }
-      .charts { grid-template-columns: 1fr; }
-      .card { height: 280px; }
-    }
-  </style>
-</head>
-<body>
-  <div class="app">
-    <h1>NI Live Dashboard</h1>
-
-    <div class="status-bar">
-      <div class="pill"><span id="dot" class="dot"></span><span id="statusText">CONNECTING...</span></div>
-      <div class="pill">Run: <span id="runIdText">--</span></div>
-      <div class="pill">File: <span id="fileNameText">--</span></div>
-      <div class="pill">Updated: <span id="updatedAt">--</span></div>
-      <div class="pill">Age: <span id="ageSec">--</span>s</div>
-    </div>
-
-    <div class="charts">
-      <div class="card">
-        <h2 class="chart-title">AI0</h2>
-        <div class="stats" id="stats0">mean -- | min -- | max --</div>
-        <div class="canvas-wrap"><canvas id="chart0"></canvas></div>
-      </div>
-
-      <div class="card">
-        <h2 class="chart-title">AI1</h2>
-        <div class="stats" id="stats1">mean -- | min -- | max --</div>
-        <div class="canvas-wrap"><canvas id="chart1"></canvas></div>
-      </div>
-
-      <div class="card">
-        <h2 class="chart-title">AI2</h2>
-        <div class="stats" id="stats2">mean -- | min -- | max --</div>
-        <div class="canvas-wrap"><canvas id="chart2"></canvas></div>
-      </div>
-    </div>
-  </div>
-
-<script>
-  const API_BASE = "https://ni-live-monitor.yanovichvitaliy.workers.dev";
-  const WS_URL = "wss://ni-live-monitor.yanovichvitaliy.workers.dev/ws";
-  const MAX_POINTS = 1000;
-
-  const dot = document.getElementById("dot");
-  const statusText = document.getElementById("statusText");
-  const runIdText = document.getElementById("runIdText");
-  const fileNameText = document.getElementById("fileNameText");
-  const updatedAt = document.getElementById("updatedAt");
-  const ageSec = document.getElementById("ageSec");
-
-  const stats0 = document.getElementById("stats0");
-  const stats1 = document.getElementById("stats1");
-  const stats2 = document.getElementById("stats2");
-
-  let activeRunId = null;
-  let runStartMs = null;
-  let lastUpdatedAtMs = null;
-
-  function setStatus(text, mode) {
-    statusText.textContent = text;
-    dot.className = "dot " + (mode === "ok" ? "ok" : mode === "bad" ? "bad" : "");
-  }
-
-  function fmt(value) {
-    const n = Number(value);
-    return Number.isFinite(n) ? n.toFixed(5) : "--";
-  }
-
-  function makeChart(canvasId, label) {
-    const ctx = document.getElementById(canvasId).getContext("2d");
-
-    return new Chart(ctx, {
-      type: "line",
-      data: {
-        datasets: [
-          {
-            label: label + " max",
-            data: [],
-            borderColor: "rgba(0,0,0,0)",
-            pointRadius: 0,
-            fill: false
-          },
-          {
-            label: label + " min",
-            data: [],
-            borderColor: "rgba(0,0,0,0)",
-            backgroundColor: "rgba(34,197,94,0.18)",
-            pointRadius: 0,
-            fill: "-1"
-          },
-          {
-            label: label + " mean",
-            data: [],
-            borderColor: "#22c55e",
-            backgroundColor: "#22c55e",
-            pointRadius: 2,
-            tension: 0.15,
-            fill: false
-          }
-        ]
-      },
-      options: {
-        responsive: true,
-        maintainAspectRatio: false,
-        animation: false,
-        parsing: false,
-        normalized: true,
-        scales: {
-          x: {
-            type: "linear",
-            title: { display: true, text: "t (s)" },
-            ticks: { color: "#cbd5e1", maxTicksLimit: 6 },
-            grid: { color: "rgba(255,255,255,0.08)" }
-          },
-          y: {
-            title: { display: true, text: "V" },
-            ticks: { color: "#cbd5e1", maxTicksLimit: 6 },
-            grid: { color: "rgba(255,255,255,0.08)" }
-          }
+def build_stats_payload(
+    run_id: str,
+    run_started_at: datetime,
+    tdms_file: Path,
+    batch_data: np.ndarray,
+    batch_end: datetime,
+) -> dict[str, Any]:
+    return {
+        "reset": False,
+        "run_id": run_id,
+        "run_started_at": iso_utc(run_started_at),
+        "updated_at": iso_utc(batch_end),
+        "file_name": tdms_file.name,
+        "device": DEVICE_NAME,
+        "rate_hz": RATE_HZ,
+        "window_seconds": BATCH_SECONDS,
+        "channels": {
+            "ai0": calc_stats(batch_data[0]),
+            "ai1": calc_stats(batch_data[1]),
+            "ai2": calc_stats(batch_data[2]),
         },
-        plugins: {
-          legend: {
-            labels: { color: "#e2e8f0", boxWidth: 12, font: { size: 11 } }
-          }
-        }
-      }
-    });
-  }
-
-  const chart0 = makeChart("chart0", "AI0");
-  const chart1 = makeChart("chart1", "AI1");
-  const chart2 = makeChart("chart2", "AI2");
-
-  function clearChart(chart) {
-    chart.data.datasets.forEach(ds => ds.data = []);
-    chart.update("none");
-  }
-
-  function clearAllCharts() {
-    clearChart(chart0);
-    clearChart(chart1);
-    clearChart(chart2);
-  }
-
-  function resetStatsText() {
-    stats0.textContent = "mean -- | min -- | max --";
-    stats1.textContent = "mean -- | min -- | max --";
-    stats2.textContent = "mean -- | min -- | max --";
-  }
-
-  function switchToRun(payload) {
-    activeRunId = payload.run_id || null;
-    runStartMs = payload.run_started_at ? Date.parse(payload.run_started_at) : null;
-    runIdText.textContent = activeRunId || "--";
-    fileNameText.textContent = payload.file_name || "--";
-    updatedAt.textContent = payload.updated_at || "--";
-    ageSec.textContent = "0";
-    lastUpdatedAtMs = null;
-
-    clearAllCharts();
-    resetStatsText();
-  }
-
-  function appendPoint(chart, x, mean, min, max) {
-    const dsMax = chart.data.datasets[0].data;
-    const dsMin = chart.data.datasets[1].data;
-    const dsMean = chart.data.datasets[2].data;
-
-    const lastMean = dsMean.length ? dsMean[dsMean.length - 1] : null;
-    if (lastMean && lastMean.x === x) return;
-
-    dsMax.push({ x, y: max });
-    dsMin.push({ x, y: min });
-    dsMean.push({ x, y: mean });
-
-    if (dsMean.length > MAX_POINTS) {
-      dsMax.splice(0, dsMax.length - MAX_POINTS);
-      dsMin.splice(0, dsMin.length - MAX_POINTS);
-      dsMean.splice(0, dsMean.length - MAX_POINTS);
     }
 
-    chart.update("none");
-  }
 
-  function applyPayload(payload) {
-    if (!payload || !payload.channels) return;
+def send_payload(session: requests.Session, payload: dict[str, Any]) -> None:
+    response = session.post(
+        WORKER_URL + "/ingest",
+        headers={
+            "Authorization": f"Bearer {INGEST_TOKEN}",
+            "Content-Type": "application/json",
+        },
+        json=payload,
+        timeout=10,
+    )
+    response.raise_for_status()
 
-    if (!activeRunId || payload.run_id !== activeRunId) {
-      switchToRun(payload);
-    }
 
-    if (!runStartMs && payload.run_started_at) {
-      runStartMs = Date.parse(payload.run_started_at);
-    }
+# ============================================================
+# MAIN
+# ============================================================
+def main() -> None:
+    if INGEST_TOKEN == "PUT_YOUR_NEW_ASCII_TOKEN_HERE":
+        raise RuntimeError("Replace INGEST_TOKEN with your real ASCII token.")
 
-    const ts = payload._received_at || payload.updated_at || null;
-    if (!ts) return;
+    run_started_at = utc_now()
+    run_id = make_run_id(run_started_at)
+    tdms_file = create_tdms_file_path(run_id)
 
-    const ms = Date.parse(ts);
-    if (!Number.isFinite(ms)) return;
+    print(f"Run ID: {run_id}")
+    print(f"TDMS file: {tdms_file}")
 
-    lastUpdatedAtMs = ms;
-    updatedAt.textContent = ts;
-    runIdText.textContent = payload.run_id || "--";
-    fileNameText.textContent = payload.file_name || "--";
+    session = requests.Session()
 
-    const c0 = payload.channels.ai0;
-    const c1 = payload.channels.ai1;
-    const c2 = payload.channels.ai2;
+    # одразу повідомляємо сервер, що почався новий запуск
+    try:
+        reset_payload = build_reset_payload(run_id, run_started_at, tdms_file)
+        send_payload(session, reset_payload)
+        print("Reset payload sent.")
+    except Exception as e:
+        print("Reset send error:", e)
 
-    stats0.textContent = `mean ${fmt(c0.mean)} | min ${fmt(c0.min)} | max ${fmt(c0.max)}`;
-    stats1.textContent = `mean ${fmt(c1.mean)} | min ${fmt(c1.min)} | max ${fmt(c1.max)}`;
-    stats2.textContent = `mean ${fmt(c2.mean)} | min ${fmt(c2.min)} | max ${fmt(c2.max)}`;
+    read_buffer = np.empty((len(CHANNELS), SAMPLES_PER_READ), dtype=np.float64)
+    batch_buffer = np.empty((len(CHANNELS), SAMPLES_PER_BATCH), dtype=np.float64)
+    batch_fill = 0
 
-    const x = runStartMs ? ((ms - runStartMs) / 1000.0) : (ms / 1000.0);
+    with nidaqmx.Task() as task:
+        for channel in CHANNELS:
+            task.ai_channels.add_ai_voltage_chan(
+                f"{DEVICE_NAME}/{channel}",
+                min_val=MIN_VOLTAGE,
+                max_val=MAX_VOLTAGE,
+            )
 
-    appendPoint(chart0, x, Number(c0.mean), Number(c0.min), Number(c0.max));
-    appendPoint(chart1, x, Number(c1.mean), Number(c1.min), Number(c1.max));
-    appendPoint(chart2, x, Number(c2.mean), Number(c2.min), Number(c2.max));
-  }
+        task.timing.cfg_samp_clk_timing(
+            rate=RATE_HZ,
+            sample_mode=AcquisitionType.CONTINUOUS,
+            samps_per_chan=DAQ_BUFFER_SAMPLES,
+        )
 
-  async function loadHistory() {
-    try {
-      const resp = await fetch(API_BASE + "/history", { cache: "no-store" });
-      if (!resp.ok) return;
+        # TDMS logging: NI-DAQmx пише сирі дані прямо у файл
+        task.in_stream.configure_logging(
+            tdms_file,
+            logging_mode=LoggingMode.LOG_AND_READ,
+            group_name="NI",
+            operation=LoggingOperation.OPEN_OR_CREATE,
+        )
 
-      const snapshot = await resp.json();
-      if (!snapshot || !snapshot.run_id) return;
+        reader = AnalogMultiChannelReader(task.in_stream)
+        task.start()
 
-      switchToRun({
-        run_id: snapshot.run_id,
-        run_started_at: snapshot.run_started_at,
-        file_name: snapshot.file_name,
-        updated_at: snapshot.latest?.updated_at || snapshot.run_started_at,
-      });
+        print("Measurement started.")
 
-      for (const point of snapshot.points || []) {
-        applyPayload(point);
-      }
-    } catch (e) {
-      console.error("History load failed", e);
-    }
-  }
+        while True:
+            # 1 секунда сирих даних = 400 точок/канал
+            reader.read_many_sample(
+                read_buffer,
+                number_of_samples_per_channel=SAMPLES_PER_READ,
+                timeout=READ_TIMEOUT_SECONDS,
+            )
 
-  setInterval(() => {
-    if (!lastUpdatedAtMs) return;
+            chunk_data = read_buffer.copy()
 
-    const currentAge = Math.max(0, Math.round((Date.now() - lastUpdatedAtMs) / 1000));
-    ageSec.textContent = String(currentAge);
+            # додаємо у 5-секундний буфер
+            start_index = batch_fill
+            end_index = batch_fill + SAMPLES_PER_READ
+            batch_buffer[:, start_index:end_index] = chunk_data
+            batch_fill = end_index
 
-    if (currentAge <= 10) setStatus("LIVE", "ok");
-    else if (currentAge <= 30) setStatus("STALE", "");
-    else setStatus("OFFLINE", "bad");
-  }, 1000);
+            # якщо ще не накопичили 5 секунд — чекаємо далі
+            if batch_fill < SAMPLES_PER_BATCH:
+                continue
 
-  async function start() {
-    await loadHistory();
+            # маємо 5 секунд даних — рахуємо mean/min/max
+            batch_end = utc_now()
+            batch_data = batch_buffer.copy()
+            batch_fill = 0
 
-    const ws = new WebSocket(WS_URL);
+            stats_payload = build_stats_payload(
+                run_id=run_id,
+                run_started_at=run_started_at,
+                tdms_file=tdms_file,
+                batch_data=batch_data,
+                batch_end=batch_end,
+            )
 
-    ws.onopen = () => setStatus("CONNECTED", "ok");
-    ws.onclose = () => setStatus("CLOSED", "bad");
-    ws.onerror = () => setStatus("ERROR", "bad");
+            try:
+                send_payload(session, stats_payload)
+                print(f"Sent stats for run {run_id} at {stats_payload['updated_at']}")
+            except Exception as e:
+                print("Send error:", e)
 
-    ws.onmessage = (e) => {
-      let msg;
-      try {
-        msg = JSON.parse(e.data);
-      } catch {
-        return;
-      }
 
-      const payload = msg.data || null;
-      if (!payload) return;
-
-      if (msg.type === "reset" || payload.reset === true) {
-        switchToRun(payload);
-        setStatus("NEW RUN", "ok");
-        return;
-      }
-
-      applyPayload(payload);
-      setStatus("LIVE", "ok");
-    };
-  }
-
-  start();
-</script>
-</body>
-</html>
+if __name__ == "__main__":
+    main()
