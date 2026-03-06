@@ -6,9 +6,7 @@
   <title>NI Live Dashboard</title>
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
   <style>
-    * {
-      box-sizing: border-box;
-    }
+    * { box-sizing: border-box; }
 
     html, body {
       margin: 0;
@@ -21,9 +19,7 @@
       color: #e2e8f0;
     }
 
-    body {
-      padding: 10px;
-    }
+    body { padding: 10px; }
 
     .app {
       height: calc(100vh - 20px);
@@ -110,36 +106,11 @@
       display: block;
     }
 
-    @media (max-width: 1200px) {
-      .charts {
-        grid-template-columns: 1fr 1fr 1fr;
-      }
-
-      .chart-title {
-        font-size: 16px;
-      }
-
-      .stats {
-        font-size: 11px;
-      }
-    }
-
     @media (max-width: 900px) {
-      html, body {
-        overflow: auto;
-      }
-
-      .app {
-        height: auto;
-      }
-
-      .charts {
-        grid-template-columns: 1fr;
-      }
-
-      .card {
-        height: 280px;
-      }
+      html, body { overflow: auto; }
+      .app { height: auto; }
+      .charts { grid-template-columns: 1fr; }
+      .card { height: 280px; }
     }
   </style>
 </head>
@@ -149,6 +120,8 @@
 
     <div class="status-bar">
       <div class="pill"><span id="dot" class="dot"></span><span id="statusText">CONNECTING...</span></div>
+      <div class="pill">Run: <span id="runIdText">--</span></div>
+      <div class="pill">File: <span id="fileNameText">--</span></div>
       <div class="pill">Updated: <span id="updatedAt">--</span></div>
       <div class="pill">Age: <span id="ageSec">--</span>s</div>
     </div>
@@ -157,36 +130,33 @@
       <div class="card">
         <h2 class="chart-title">AI0</h2>
         <div class="stats" id="stats0">mean -- | min -- | max --</div>
-        <div class="canvas-wrap">
-          <canvas id="chart0"></canvas>
-        </div>
+        <div class="canvas-wrap"><canvas id="chart0"></canvas></div>
       </div>
 
       <div class="card">
         <h2 class="chart-title">AI1</h2>
         <div class="stats" id="stats1">mean -- | min -- | max --</div>
-        <div class="canvas-wrap">
-          <canvas id="chart1"></canvas>
-        </div>
+        <div class="canvas-wrap"><canvas id="chart1"></canvas></div>
       </div>
 
       <div class="card">
         <h2 class="chart-title">AI2</h2>
         <div class="stats" id="stats2">mean -- | min -- | max --</div>
-        <div class="canvas-wrap">
-          <canvas id="chart2"></canvas>
-        </div>
+        <div class="canvas-wrap"><canvas id="chart2"></canvas></div>
       </div>
     </div>
   </div>
 
 <script>
   const WS_URL = "wss://ni-live-monitor.yanovichvitaliy.workers.dev/ws";
-  const STORAGE_KEY = "ni_dashboard_minmax_v1";
+  const LATEST_URL = "https://ni-live-monitor.yanovichvitaliy.workers.dev/latest";
+  const STORAGE_KEY = "ni_dashboard_run_storage_v1";
   const MAX_POINTS = 1000;
 
   const dot = document.getElementById("dot");
   const statusText = document.getElementById("statusText");
+  const runIdText = document.getElementById("runIdText");
+  const fileNameText = document.getElementById("fileNameText");
   const updatedAt = document.getElementById("updatedAt");
   const ageSec = document.getElementById("ageSec");
 
@@ -195,6 +165,8 @@
   const stats2 = document.getElementById("stats2");
 
   let lastUpdatedAtMs = null;
+  let activeRunId = null;
+  let t0Sec = null;
 
   function setStatus(text, mode) {
     statusText.textContent = text;
@@ -271,33 +243,64 @@
   const chart1 = makeChart("chart1", "AI1");
   const chart2 = makeChart("chart2", "AI2");
 
+  function clearChart(chart) {
+    chart.data.datasets.forEach(ds => ds.data = []);
+    chart.update("none");
+  }
+
+  function clearAllCharts() {
+    clearChart(chart0);
+    clearChart(chart1);
+    clearChart(chart2);
+  }
+
   function saveCharts() {
     const payload = {
+      runId: activeRunId,
+      t0Sec,
+      lastUpdatedAtMs,
       chart0: chart0.data.datasets,
       chart1: chart1.data.datasets,
-      chart2: chart2.data.datasets,
-      lastUpdatedAtMs
+      chart2: chart2.data.datasets
     };
     localStorage.setItem(STORAGE_KEY, JSON.stringify(payload));
   }
 
-  function loadCharts() {
+  async function restoreChartsIfSameRun() {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (!raw) return;
 
     try {
       const saved = JSON.parse(raw);
 
+      const resp = await fetch(LATEST_URL, { cache: "no-store" });
+      if (!resp.ok) {
+        localStorage.removeItem(STORAGE_KEY);
+        return;
+      }
+
+      const latest = await resp.json();
+      if (!latest || !latest.run_id || !saved.runId || latest.run_id !== saved.runId) {
+        localStorage.removeItem(STORAGE_KEY);
+        return;
+      }
+
+      activeRunId = saved.runId;
+      t0Sec = saved.t0Sec ?? null;
+      lastUpdatedAtMs = saved.lastUpdatedAtMs ?? null;
+
       if (saved.chart0) chart0.data.datasets = saved.chart0;
       if (saved.chart1) chart1.data.datasets = saved.chart1;
       if (saved.chart2) chart2.data.datasets = saved.chart2;
-      if (saved.lastUpdatedAtMs) lastUpdatedAtMs = saved.lastUpdatedAtMs;
 
       chart0.update("none");
       chart1.update("none");
       chart2.update("none");
+
+      runIdText.textContent = activeRunId;
     } catch (e) {
-      console.error("Failed to load saved charts", e);
+      console.error("Restore error", e);
+      localStorage.removeItem(STORAGE_KEY);
     }
   }
 
@@ -322,7 +325,26 @@
     chart.update("none");
   }
 
-  loadCharts();
+  function switchToRun(payload) {
+    activeRunId = payload.run_id || null;
+    runIdText.textContent = activeRunId || "--";
+    fileNameText.textContent = payload.file_name || "--";
+
+    clearAllCharts();
+    localStorage.removeItem(STORAGE_KEY);
+
+    t0Sec = null;
+    lastUpdatedAtMs = null;
+
+    stats0.textContent = "mean -- | min -- | max --";
+    stats1.textContent = "mean -- | min -- | max --";
+    stats2.textContent = "mean -- | min -- | max --";
+
+    updatedAt.textContent = payload.updated_at || "--";
+    ageSec.textContent = "0";
+  }
+
+  restoreChartsIfSameRun();
 
   setInterval(() => {
     if (!lastUpdatedAtMs) return;
@@ -350,13 +372,41 @@
     }
 
     const payload = msg.data || null;
-    if (!payload || !payload.channels) return;
+    if (!payload) return;
+
+    const incomingRunId = payload.run_id || null;
+
+    // якщо це новий запуск — очищаємо графіки
+    if (payload.reset === true || (incomingRunId && activeRunId && incomingRunId !== activeRunId)) {
+      switchToRun(payload);
+      setStatus("NEW RUN", "ok");
+
+      // reset-пакет може не містити channels
+      if (!payload.channels) {
+        saveCharts();
+        return;
+      }
+    }
+
+    if (!activeRunId && incomingRunId) {
+      activeRunId = incomingRunId;
+      runIdText.textContent = activeRunId;
+    }
+
+    fileNameText.textContent = payload.file_name || "--";
+
+    if (!payload.channels) return;
 
     const ts = payload._received_at || payload.updated_at || null;
     if (!ts) return;
 
     const ms = Date.parse(ts);
     if (!Number.isFinite(ms)) return;
+
+    if (t0Sec === null) {
+      const baseMs = Date.parse(payload.run_started_at || ts);
+      t0Sec = Number.isFinite(baseMs) ? baseMs / 1000.0 : ms / 1000.0;
+    }
 
     lastUpdatedAtMs = ms;
     updatedAt.textContent = ts;
@@ -369,13 +419,14 @@
     stats1.textContent = `mean ${fmt(c1.mean)} | min ${fmt(c1.min)} | max ${fmt(c1.max)}`;
     stats2.textContent = `mean ${fmt(c2.mean)} | min ${fmt(c2.min)} | max ${fmt(c2.max)}`;
 
-    const x = ms / 1000.0;
+    const x = (ms / 1000.0) - t0Sec;
 
     appendPoint(chart0, x, Number(c0.mean), Number(c0.min), Number(c0.max));
     appendPoint(chart1, x, Number(c1.mean), Number(c1.min), Number(c1.max));
     appendPoint(chart2, x, Number(c2.mean), Number(c2.min), Number(c2.max));
 
     saveCharts();
+    setStatus("LIVE", "ok");
   };
 </script>
 </body>
