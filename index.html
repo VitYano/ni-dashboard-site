@@ -12,8 +12,7 @@
       margin: 0;
       padding: 0;
       width: 100%;
-      height: 100%;
-      overflow: hidden;
+      min-height: 100%;
       font-family: Arial, sans-serif;
       background: #0f172a;
       color: #e2e8f0;
@@ -22,10 +21,10 @@
     body { padding: 10px; }
 
     .app {
-      height: calc(100vh - 20px);
       display: grid;
       grid-template-rows: auto auto 1fr;
       gap: 10px;
+      min-height: calc(100vh - 20px);
     }
 
     h1 {
@@ -52,11 +51,6 @@
       font-size: 13px;
     }
 
-    .pill a {
-      color: #e2e8f0;
-      text-decoration: none;
-    }
-
     .dot {
       width: 9px;
       height: 9px;
@@ -70,7 +64,7 @@
     .charts {
       min-height: 0;
       display: grid;
-      grid-template-columns: repeat(3, 1fr);
+      grid-template-columns: repeat(4, 1fr);
       gap: 10px;
     }
 
@@ -82,6 +76,7 @@
       border: 1px solid rgba(255,255,255,.08);
       border-radius: 12px;
       padding: 10px;
+      height: 300px;
     }
 
     .chart-title {
@@ -111,9 +106,11 @@
       display: block;
     }
 
+    @media (max-width: 1400px) {
+      .charts { grid-template-columns: repeat(2, 1fr); }
+    }
+
     @media (max-width: 900px) {
-      html, body { overflow: auto; }
-      .app { height: auto; }
       .charts { grid-template-columns: 1fr; }
       .card { height: 280px; }
     }
@@ -127,52 +124,37 @@
       <div class="pill"><span id="dot" class="dot"></span><span id="statusText">CONNECTING...</span></div>
       <div class="pill">Run: <span id="runIdText">--</span></div>
       <div class="pill">File: <span id="fileNameText">--</span></div>
+      <div class="pill">Unit: <span id="unitText">uV/V</span></div>
+      <div class="pill">Vex: <span id="vexText">--</span> V</div>
       <div class="pill">Updated: <span id="updatedAt">--</span></div>
       <div class="pill">Age: <span id="ageSec">--</span>s</div>
-      <div class="pill"><a id="rawDownloadLink" href="#" target="_blank">Скачати сирий файл</a></div>
     </div>
 
-    <div class="charts">
-      <div class="card">
-        <h2 class="chart-title">AI0</h2>
-        <div class="stats" id="stats0">mean -- | min -- | max --</div>
-        <div class="canvas-wrap"><canvas id="chart0"></canvas></div>
-      </div>
-
-      <div class="card">
-        <h2 class="chart-title">AI1</h2>
-        <div class="stats" id="stats1">mean -- | min -- | max --</div>
-        <div class="canvas-wrap"><canvas id="chart1"></canvas></div>
-      </div>
-
-      <div class="card">
-        <h2 class="chart-title">AI2</h2>
-        <div class="stats" id="stats2">mean -- | min -- | max --</div>
-        <div class="canvas-wrap"><canvas id="chart2"></canvas></div>
-      </div>
-    </div>
+    <div class="charts" id="charts"></div>
   </div>
 
 <script>
   const API_BASE = "https://ni-live-monitor.yanovichvitaliy.workers.dev";
   const WS_URL = "wss://ni-live-monitor.yanovichvitaliy.workers.dev/ws";
   const MAX_POINTS = 1000;
+  const CHANNEL_KEYS = ["ai0", "ai1", "ai2", "ai3", "ai4", "ai5", "ai6", "ai7"];
 
   const dot = document.getElementById("dot");
   const statusText = document.getElementById("statusText");
   const runIdText = document.getElementById("runIdText");
   const fileNameText = document.getElementById("fileNameText");
+  const unitText = document.getElementById("unitText");
+  const vexText = document.getElementById("vexText");
   const updatedAt = document.getElementById("updatedAt");
   const ageSec = document.getElementById("ageSec");
-  const rawDownloadLink = document.getElementById("rawDownloadLink");
-
-  const stats0 = document.getElementById("stats0");
-  const stats1 = document.getElementById("stats1");
-  const stats2 = document.getElementById("stats2");
+  const chartsEl = document.getElementById("charts");
 
   let activeRunId = null;
   let runStartMs = null;
   let lastUpdatedAtMs = null;
+
+  const statsEls = {};
+  const charts = {};
 
   function setStatus(text, mode) {
     statusText.textContent = text;
@@ -181,17 +163,38 @@
 
   function fmt(value) {
     const n = Number(value);
-    return Number.isFinite(n) ? n.toFixed(5) : "--";
+    return Number.isFinite(n) ? n.toFixed(3) : "--";
   }
 
-  function updateRawLink(runId, fileName) {
-    if (!runId || !fileName) {
-      rawDownloadLink.href = "#";
-      return;
-    }
+  function makeCard(channelKey) {
+    const upper = channelKey.toUpperCase();
 
-    rawDownloadLink.href =
-      `${API_BASE}/download/${encodeURIComponent(runId)}/${encodeURIComponent(fileName)}`;
+    const card = document.createElement("div");
+    card.className = "card";
+
+    const title = document.createElement("h2");
+    title.className = "chart-title";
+    title.textContent = upper;
+
+    const stats = document.createElement("div");
+    stats.className = "stats";
+    stats.id = `stats-${channelKey}`;
+    stats.textContent = "mean -- | min -- | max --";
+
+    const wrap = document.createElement("div");
+    wrap.className = "canvas-wrap";
+
+    const canvas = document.createElement("canvas");
+    canvas.id = `chart-${channelKey}`;
+
+    wrap.appendChild(canvas);
+    card.appendChild(title);
+    card.appendChild(stats);
+    card.appendChild(wrap);
+    chartsEl.appendChild(card);
+
+    statsEls[channelKey] = stats;
+    charts[channelKey] = makeChart(canvas.id, upper);
   }
 
   function makeChart(canvasId, label) {
@@ -241,7 +244,7 @@
             grid: { color: "rgba(255,255,255,0.08)" }
           },
           y: {
-            title: { display: true, text: "V" },
+            title: { display: true, text: "uV/V" },
             ticks: { color: "#cbd5e1", maxTicksLimit: 6 },
             grid: { color: "rgba(255,255,255,0.08)" }
           }
@@ -255,25 +258,21 @@
     });
   }
 
-  const chart0 = makeChart("chart0", "AI0");
-  const chart1 = makeChart("chart1", "AI1");
-  const chart2 = makeChart("chart2", "AI2");
-
   function clearChart(chart) {
     chart.data.datasets.forEach(ds => ds.data = []);
     chart.update("none");
   }
 
   function clearAllCharts() {
-    clearChart(chart0);
-    clearChart(chart1);
-    clearChart(chart2);
+    for (const key of CHANNEL_KEYS) {
+      clearChart(charts[key]);
+    }
   }
 
   function resetStatsText() {
-    stats0.textContent = "mean -- | min -- | max --";
-    stats1.textContent = "mean -- | min -- | max --";
-    stats2.textContent = "mean -- | min -- | max --";
+    for (const key of CHANNEL_KEYS) {
+      statsEls[key].textContent = "mean -- | min -- | max --";
+    }
   }
 
   function switchToRun(payload) {
@@ -282,11 +281,11 @@
 
     runIdText.textContent = activeRunId || "--";
     fileNameText.textContent = payload.file_name || "--";
+    unitText.textContent = payload.unit || "uV/V";
+    vexText.textContent = Number.isFinite(Number(payload.vex_value)) ? String(payload.vex_value) : "--";
     updatedAt.textContent = payload.updated_at || "--";
     ageSec.textContent = "0";
     lastUpdatedAtMs = null;
-
-    updateRawLink(payload.run_id, payload.file_name);
 
     clearAllCharts();
     resetStatsText();
@@ -332,24 +331,28 @@
 
     lastUpdatedAtMs = ms;
     updatedAt.textContent = ts;
-
     runIdText.textContent = payload.run_id || "--";
     fileNameText.textContent = payload.file_name || "--";
-    updateRawLink(payload.run_id, payload.file_name);
-
-    const c0 = payload.channels.ai0;
-    const c1 = payload.channels.ai1;
-    const c2 = payload.channels.ai2;
-
-    stats0.textContent = `mean ${fmt(c0.mean)} | min ${fmt(c0.min)} | max ${fmt(c0.max)}`;
-    stats1.textContent = `mean ${fmt(c1.mean)} | min ${fmt(c1.min)} | max ${fmt(c1.max)}`;
-    stats2.textContent = `mean ${fmt(c2.mean)} | min ${fmt(c2.min)} | max ${fmt(c2.max)}`;
+    unitText.textContent = payload.unit || "uV/V";
+    vexText.textContent = Number.isFinite(Number(payload.vex_value)) ? String(payload.vex_value) : "--";
 
     const x = runStartMs ? ((ms - runStartMs) / 1000.0) : (ms / 1000.0);
 
-    appendPoint(chart0, x, Number(c0.mean), Number(c0.min), Number(c0.max));
-    appendPoint(chart1, x, Number(c1.mean), Number(c1.min), Number(c1.max));
-    appendPoint(chart2, x, Number(c2.mean), Number(c2.min), Number(c2.max));
+    for (const key of CHANNEL_KEYS) {
+      const channel = payload.channels[key];
+      if (!channel) continue;
+
+      statsEls[key].textContent =
+        `mean ${fmt(channel.mean)} | min ${fmt(channel.min)} | max ${fmt(channel.max)}`;
+
+      appendPoint(
+        charts[key],
+        x,
+        Number(channel.mean),
+        Number(channel.min),
+        Number(channel.max)
+      );
+    }
   }
 
   async function loadHistory() {
@@ -365,6 +368,8 @@
         run_started_at: snapshot.run_started_at,
         file_name: snapshot.file_name,
         updated_at: snapshot.latest?.updated_at || snapshot.run_started_at,
+        unit: snapshot.latest?.unit || "uV/V",
+        vex_value: snapshot.latest?.vex_value
       });
 
       for (const point of snapshot.points || []) {
@@ -387,6 +392,10 @@
   }, 1000);
 
   async function start() {
+    for (const key of CHANNEL_KEYS) {
+      makeCard(key);
+    }
+
     await loadHistory();
 
     const ws = new WebSocket(WS_URL);
