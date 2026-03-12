@@ -209,48 +209,50 @@
     URL.revokeObjectURL(url);
   }
 
-  function buildChannelCsv(channelKey) {
-    const chart = charts[channelKey];
-    if (!chart) return "";
+  function buildWideCsv() {
+    const meanSeries = {};
 
-    const dsMax = chart.data.datasets[0].data;
-    const dsMin = chart.data.datasets[1].data;
-    const dsMean = chart.data.datasets[2].data;
+    for (const key of CHANNEL_KEYS) {
+      const chart = charts[key];
+      meanSeries[key] = chart ? chart.data.datasets[2].data : [];
+    }
 
-    const count = Math.min(dsMax.length, dsMin.length, dsMean.length);
+    const timeMap = new Map();
+
+    for (const key of CHANNEL_KEYS) {
+      for (const point of meanSeries[key]) {
+        if (!point || !Number.isFinite(point.x)) continue;
+
+        if (!timeMap.has(point.x)) {
+          timeMap.set(point.x, { t: point.x, ai0: "", ai1: "", ai2: "", ai3: "" });
+        }
+
+        timeMap.get(point.x)[key] = point.y;
+      }
+    }
+
     const rows = [];
+    rows.push(["t", "ai0", "ai1", "ai2", "ai3"]);
 
-    rows.push([
-      "run_id",
-      "file_name",
-      "channel",
-      "time_s",
-      "mean",
-      "min",
-      "max",
-      "unit"
-    ]);
+    const sorted = Array.from(timeMap.values()).sort((a, b) => a.t - b.t);
 
-    for (let i = 0; i < count; i++) {
+    for (const row of sorted) {
       rows.push([
-        activeRunId || "",
-        fileNameText.textContent || "",
-        channelKey,
-        dsMean[i]?.x ?? "",
-        dsMean[i]?.y ?? "",
-        dsMin[i]?.y ?? "",
-        dsMax[i]?.y ?? "",
-        unitText.textContent || "uV/V"
+        row.t,
+        row.ai0,
+        row.ai1,
+        row.ai2,
+        row.ai3
       ]);
     }
 
     return rows.map(row => row.map(csvEscape).join(",")).join("\n");
   }
 
-  function downloadChannelCsv(channelKey) {
-    const csv = buildChannelCsv(channelKey);
+  function downloadWideCsv() {
+    const csv = buildWideCsv();
     const runId = activeRunId || "no_run";
-    downloadTextFile(`ni_dashboard_${runId}_${channelKey}.csv`, csv);
+    downloadTextFile(`ni_dashboard_${runId}.csv`, csv);
   }
 
   function makeCard(channelKey) {
@@ -282,8 +284,8 @@
     const button = document.createElement("button");
     button.type = "button";
     button.className = "download-btn";
-    button.textContent = "Скачати CSV";
-    button.addEventListener("click", () => downloadChannelCsv(channelKey));
+    button.textContent = "Download";
+    button.addEventListener("click", downloadWideCsv);
 
     actions.appendChild(button);
 
