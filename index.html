@@ -71,12 +71,12 @@
     .card {
       min-height: 0;
       display: grid;
-      grid-template-rows: auto auto 1fr;
+      grid-template-rows: auto auto 1fr auto;
       background: #1e293b;
       border: 1px solid rgba(255,255,255,.08);
       border-radius: 12px;
       padding: 10px;
-      height: 300px;
+      height: 340px;
     }
 
     .chart-title {
@@ -106,13 +106,34 @@
       display: block;
     }
 
+    .card-actions {
+      margin-top: 8px;
+      display: flex;
+      justify-content: flex-end;
+    }
+
+    .download-btn {
+      background: rgba(255,255,255,.08);
+      border: 1px solid rgba(255,255,255,.12);
+      color: #e2e8f0;
+      border-radius: 8px;
+      padding: 6px 10px;
+      font-size: 12px;
+      font-weight: 700;
+      cursor: pointer;
+    }
+
+    .download-btn:hover {
+      background: rgba(255,255,255,.12);
+    }
+
     @media (max-width: 1400px) {
       .charts { grid-template-columns: repeat(2, 1fr); }
     }
 
     @media (max-width: 900px) {
       .charts { grid-template-columns: 1fr; }
-      .card { height: 280px; }
+      .card { height: 320px; }
     }
   </style>
 </head>
@@ -166,6 +187,72 @@
     return Number.isFinite(n) ? n.toFixed(3) : "--";
   }
 
+  function csvEscape(value) {
+    const s = String(value ?? "");
+    if (s.includes('"') || s.includes(",") || s.includes("\n")) {
+      return `"${s.replace(/"/g, '""')}"`;
+    }
+    return s;
+  }
+
+  function downloadTextFile(filename, content, contentType = "text/csv;charset=utf-8;") {
+    const blob = new Blob([content], { type: contentType });
+    const url = URL.createObjectURL(blob);
+
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+
+    URL.revokeObjectURL(url);
+  }
+
+  function buildChannelCsv(channelKey) {
+    const chart = charts[channelKey];
+    if (!chart) return "";
+
+    const dsMax = chart.data.datasets[0].data;
+    const dsMin = chart.data.datasets[1].data;
+    const dsMean = chart.data.datasets[2].data;
+
+    const count = Math.min(dsMax.length, dsMin.length, dsMean.length);
+    const rows = [];
+
+    rows.push([
+      "run_id",
+      "file_name",
+      "channel",
+      "time_s",
+      "mean",
+      "min",
+      "max",
+      "unit"
+    ]);
+
+    for (let i = 0; i < count; i++) {
+      rows.push([
+        activeRunId || "",
+        fileNameText.textContent || "",
+        channelKey,
+        dsMean[i]?.x ?? "",
+        dsMean[i]?.y ?? "",
+        dsMin[i]?.y ?? "",
+        dsMax[i]?.y ?? "",
+        unitText.textContent || "uV/V"
+      ]);
+    }
+
+    return rows.map(row => row.map(csvEscape).join(",")).join("\n");
+  }
+
+  function downloadChannelCsv(channelKey) {
+    const csv = buildChannelCsv(channelKey);
+    const runId = activeRunId || "no_run";
+    downloadTextFile(`ni_dashboard_${runId}_${channelKey}.csv`, csv);
+  }
+
   function makeCard(channelKey) {
     const upper = channelKey.toUpperCase();
 
@@ -188,9 +275,22 @@
     canvas.id = `chart-${channelKey}`;
 
     wrap.appendChild(canvas);
+
+    const actions = document.createElement("div");
+    actions.className = "card-actions";
+
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "download-btn";
+    button.textContent = "Скачати CSV";
+    button.addEventListener("click", () => downloadChannelCsv(channelKey));
+
+    actions.appendChild(button);
+
     card.appendChild(title);
     card.appendChild(stats);
     card.appendChild(wrap);
+    card.appendChild(actions);
     chartsEl.appendChild(card);
 
     statsEls[channelKey] = stats;
