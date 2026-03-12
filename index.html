@@ -18,7 +18,9 @@
       color: #e2e8f0;
     }
 
-    body { padding: 10px; }
+    body {
+      padding: 10px;
+    }
 
     .app {
       display: grid;
@@ -128,12 +130,19 @@
     }
 
     @media (max-width: 1400px) {
-      .charts { grid-template-columns: repeat(2, 1fr); }
+      .charts {
+        grid-template-columns: repeat(2, 1fr);
+      }
     }
 
     @media (max-width: 900px) {
-      .charts { grid-template-columns: 1fr; }
-      .card { height: 320px; }
+      .charts {
+        grid-template-columns: 1fr;
+      }
+
+      .card {
+        height: 320px;
+      }
     }
   </style>
 </head>
@@ -142,7 +151,10 @@
     <h1>NI Live Dashboard</h1>
 
     <div class="status-bar">
-      <div class="pill"><span id="dot" class="dot"></span><span id="statusText">CONNECTING...</span></div>
+      <div class="pill">
+        <span id="dot" class="dot"></span>
+        <span id="statusText">CONNECTING...</span>
+      </div>
       <div class="pill">Run: <span id="runIdText">--</span></div>
       <div class="pill">File: <span id="fileNameText">--</span></div>
       <div class="pill">Unit: <span id="unitText">uV/V</span></div>
@@ -154,381 +166,381 @@
     <div class="charts" id="charts"></div>
   </div>
 
-<script>
-  const API_BASE = "https://ni-live-monitor.yanovichvitaliy.workers.dev";
-  const WS_URL = "wss://ni-live-monitor.yanovichvitaliy.workers.dev/ws";
-  const MAX_POINTS = 1000;
-  const CHANNEL_KEYS = ["ai0", "ai1", "ai2", "ai3"];
+  <script>
+    const API_BASE = "https://ni-live-monitor.yanovichvitaliy.workers.dev";
+    const WS_URL = "wss://ni-live-monitor.yanovichvitaliy.workers.dev/ws";
+    const MAX_POINTS = 1000;
+    const CHANNEL_KEYS = ["ai0", "ai1", "ai2", "ai3"];
 
-  const dot = document.getElementById("dot");
-  const statusText = document.getElementById("statusText");
-  const runIdText = document.getElementById("runIdText");
-  const fileNameText = document.getElementById("fileNameText");
-  const unitText = document.getElementById("unitText");
-  const vexText = document.getElementById("vexText");
-  const updatedAt = document.getElementById("updatedAt");
-  const ageSec = document.getElementById("ageSec");
-  const chartsEl = document.getElementById("charts");
+    const dot = document.getElementById("dot");
+    const statusText = document.getElementById("statusText");
+    const runIdText = document.getElementById("runIdText");
+    const fileNameText = document.getElementById("fileNameText");
+    const unitText = document.getElementById("unitText");
+    const vexText = document.getElementById("vexText");
+    const updatedAt = document.getElementById("updatedAt");
+    const ageSec = document.getElementById("ageSec");
+    const chartsEl = document.getElementById("charts");
 
-  let activeRunId = null;
-  let runStartMs = null;
-  let lastUpdatedAtMs = null;
+    let activeRunId = null;
+    let runStartMs = null;
+    let lastUpdatedAtMs = null;
 
-  const statsEls = {};
-  const charts = {};
+    const statsEls = {};
+    const charts = {};
 
-  function setStatus(text, mode) {
-    statusText.textContent = text;
-    dot.className = "dot " + (mode === "ok" ? "ok" : mode === "bad" ? "bad" : "");
-  }
-
-  function fmt(value) {
-    const n = Number(value);
-    return Number.isFinite(n) ? n.toFixed(3) : "--";
-  }
-
-  function csvEscape(value) {
-    const s = String(value ?? "");
-    if (s.includes('"') || s.includes(",") || s.includes("\n")) {
-      return `"${s.replace(/"/g, '""')}"`;
-    }
-    return s;
-  }
-
-  function downloadTextFile(filename, content, contentType = "text/csv;charset=utf-8;") {
-    const blob = new Blob([content], { type: contentType });
-    const url = URL.createObjectURL(blob);
-
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = filename;
-    document.body.appendChild(a);
-    a.click();
-    a.remove();
-
-    URL.revokeObjectURL(url);
-  }
-
-  function buildWideCsv() {
-    const meanSeries = {};
-
-    for (const key of CHANNEL_KEYS) {
-      const chart = charts[key];
-      meanSeries[key] = chart ? chart.data.datasets[2].data : [];
+    function setStatus(text, mode) {
+      statusText.textContent = text;
+      dot.className = "dot " + (mode === "ok" ? "ok" : mode === "bad" ? "bad" : "");
     }
 
-    const timeMap = new Map();
+    function fmt(value) {
+      const n = Number(value);
+      return Number.isFinite(n) ? n.toFixed(3) : "--";
+    }
 
-    for (const key of CHANNEL_KEYS) {
-      for (const point of meanSeries[key]) {
-        if (!point || !Number.isFinite(point.x)) continue;
+    function downloadTextFile(filename, content, contentType = "text/csv;charset=utf-8;") {
+      const blob = new Blob([content], { type: contentType });
+      const url = URL.createObjectURL(blob);
 
-        if (!timeMap.has(point.x)) {
-          timeMap.set(point.x, { t: point.x, ai0: "", ai1: "", ai2: "", ai3: "" });
-        }
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
 
-        timeMap.get(point.x)[key] = point.y;
+      URL.revokeObjectURL(url);
+    }
+
+    function buildWideCsv() {
+      const meanSeries = {};
+
+      for (const key of CHANNEL_KEYS) {
+        const chart = charts[key];
+        meanSeries[key] = chart ? chart.data.datasets[2].data : [];
       }
+
+      const timeMap = new Map();
+
+      for (const key of CHANNEL_KEYS) {
+        for (const point of meanSeries[key]) {
+          if (!point || !Number.isFinite(point.x)) continue;
+
+          const t = Number(point.x).toFixed(3);
+
+          if (!timeMap.has(t)) {
+            timeMap.set(t, {
+              t,
+              ai0: "",
+              ai1: "",
+              ai2: "",
+              ai3: ""
+            });
+          }
+
+          timeMap.get(t)[key] = Number(point.y).toFixed(3);
+        }
+      }
+
+      const rows = [];
+      rows.push(["t", "ai0", "ai1", "ai2", "ai3"]);
+
+      const sorted = Array.from(timeMap.values()).sort((a, b) => Number(a.t) - Number(b.t));
+
+      for (const row of sorted) {
+        rows.push([
+          row.t,
+          row.ai0,
+          row.ai1,
+          row.ai2,
+          row.ai3
+        ]);
+      }
+
+      return rows.map(row => row.join(";")).join("\n");
     }
 
-    const rows = [];
-    rows.push(["t", "ai0", "ai1", "ai2", "ai3"]);
-
-    const sorted = Array.from(timeMap.values()).sort((a, b) => a.t - b.t);
-
-    for (const row of sorted) {
-      rows.push([
-        row.t,
-        row.ai0,
-        row.ai1,
-        row.ai2,
-        row.ai3
-      ]);
+    function downloadWideCsv() {
+      const csv = buildWideCsv();
+      const runId = activeRunId || "no_run";
+      downloadTextFile(`ni_dashboard_${runId}.csv`, csv);
     }
 
-    return rows.map(row => row.map(csvEscape).join(",")).join("\n");
-  }
+    function makeCard(channelKey) {
+      const upper = channelKey.toUpperCase();
 
-  function downloadWideCsv() {
-    const csv = buildWideCsv();
-    const runId = activeRunId || "no_run";
-    downloadTextFile(`ni_dashboard_${runId}.csv`, csv);
-  }
+      const card = document.createElement("div");
+      card.className = "card";
 
-  function makeCard(channelKey) {
-    const upper = channelKey.toUpperCase();
+      const title = document.createElement("h2");
+      title.className = "chart-title";
+      title.textContent = upper;
 
-    const card = document.createElement("div");
-    card.className = "card";
+      const stats = document.createElement("div");
+      stats.className = "stats";
+      stats.id = `stats-${channelKey}`;
+      stats.textContent = "mean -- | min -- | max --";
 
-    const title = document.createElement("h2");
-    title.className = "chart-title";
-    title.textContent = upper;
+      const wrap = document.createElement("div");
+      wrap.className = "canvas-wrap";
 
-    const stats = document.createElement("div");
-    stats.className = "stats";
-    stats.id = `stats-${channelKey}`;
-    stats.textContent = "mean -- | min -- | max --";
+      const canvas = document.createElement("canvas");
+      canvas.id = `chart-${channelKey}`;
 
-    const wrap = document.createElement("div");
-    wrap.className = "canvas-wrap";
+      wrap.appendChild(canvas);
 
-    const canvas = document.createElement("canvas");
-    canvas.id = `chart-${channelKey}`;
+      const actions = document.createElement("div");
+      actions.className = "card-actions";
 
-    wrap.appendChild(canvas);
+      const button = document.createElement("button");
+      button.type = "button";
+      button.className = "download-btn";
+      button.textContent = "Download";
+      button.addEventListener("click", downloadWideCsv);
 
-    const actions = document.createElement("div");
-    actions.className = "card-actions";
+      actions.appendChild(button);
 
-    const button = document.createElement("button");
-    button.type = "button";
-    button.className = "download-btn";
-    button.textContent = "Download";
-    button.addEventListener("click", downloadWideCsv);
+      card.appendChild(title);
+      card.appendChild(stats);
+      card.appendChild(wrap);
+      card.appendChild(actions);
+      chartsEl.appendChild(card);
 
-    actions.appendChild(button);
+      statsEls[channelKey] = stats;
+      charts[channelKey] = makeChart(canvas.id, upper);
+    }
 
-    card.appendChild(title);
-    card.appendChild(stats);
-    card.appendChild(wrap);
-    card.appendChild(actions);
-    chartsEl.appendChild(card);
+    function makeChart(canvasId, label) {
+      const ctx = document.getElementById(canvasId).getContext("2d");
 
-    statsEls[channelKey] = stats;
-    charts[channelKey] = makeChart(canvas.id, upper);
-  }
-
-  function makeChart(canvasId, label) {
-    const ctx = document.getElementById(canvasId).getContext("2d");
-
-    return new Chart(ctx, {
-      type: "line",
-      data: {
-        datasets: [
-          {
-            label: label + " max",
-            data: [],
-            borderColor: "rgba(0,0,0,0)",
-            pointRadius: 0,
-            fill: false
-          },
-          {
-            label: label + " min",
-            data: [],
-            borderColor: "rgba(0,0,0,0)",
-            backgroundColor: "rgba(34,197,94,0.18)",
-            pointRadius: 0,
-            fill: "-1"
-          },
-          {
-            label: label + " mean",
-            data: [],
-            borderColor: "#22c55e",
-            backgroundColor: "#22c55e",
-            pointRadius: 2,
-            tension: 0.15,
-            fill: false
-          }
-        ]
-      },
-      options: {
-        responsive: true,
-        maintainAspectRatio: false,
-        animation: false,
-        parsing: false,
-        normalized: true,
-        scales: {
-          x: {
-            type: "linear",
-            title: { display: true, text: "t (s)" },
-            ticks: { color: "#cbd5e1", maxTicksLimit: 6 },
-            grid: { color: "rgba(255,255,255,0.08)" }
-          },
-          y: {
-            title: { display: true, text: "uV/V" },
-            ticks: { color: "#cbd5e1", maxTicksLimit: 6 },
-            grid: { color: "rgba(255,255,255,0.08)" }
-          }
+      return new Chart(ctx, {
+        type: "line",
+        data: {
+          datasets: [
+            {
+              label: label + " max",
+              data: [],
+              borderColor: "rgba(0,0,0,0)",
+              pointRadius: 0,
+              fill: false
+            },
+            {
+              label: label + " min",
+              data: [],
+              borderColor: "rgba(0,0,0,0)",
+              backgroundColor: "rgba(34,197,94,0.18)",
+              pointRadius: 0,
+              fill: "-1"
+            },
+            {
+              label: label + " mean",
+              data: [],
+              borderColor: "#22c55e",
+              backgroundColor: "#22c55e",
+              pointRadius: 2,
+              tension: 0.15,
+              fill: false
+            }
+          ]
         },
-        plugins: {
-          legend: {
-            labels: { color: "#e2e8f0", boxWidth: 12, font: { size: 11 } }
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          animation: false,
+          parsing: false,
+          normalized: true,
+          scales: {
+            x: {
+              type: "linear",
+              title: { display: true, text: "t (s)" },
+              ticks: { color: "#cbd5e1", maxTicksLimit: 6 },
+              grid: { color: "rgba(255,255,255,0.08)" }
+            },
+            y: {
+              title: { display: true, text: "uV/V" },
+              ticks: { color: "#cbd5e1", maxTicksLimit: 6 },
+              grid: { color: "rgba(255,255,255,0.08)" }
+            }
+          },
+          plugins: {
+            legend: {
+              labels: { color: "#e2e8f0", boxWidth: 12, font: { size: 11 } }
+            }
           }
         }
-      }
-    });
-  }
-
-  function clearChart(chart) {
-    chart.data.datasets.forEach(ds => ds.data = []);
-    chart.update("none");
-  }
-
-  function clearAllCharts() {
-    for (const key of CHANNEL_KEYS) {
-      clearChart(charts[key]);
-    }
-  }
-
-  function resetStatsText() {
-    for (const key of CHANNEL_KEYS) {
-      statsEls[key].textContent = "mean -- | min -- | max --";
-    }
-  }
-
-  function switchToRun(payload) {
-    activeRunId = payload.run_id || null;
-    runStartMs = payload.run_started_at ? Date.parse(payload.run_started_at) : null;
-
-    runIdText.textContent = activeRunId || "--";
-    fileNameText.textContent = payload.file_name || "--";
-    unitText.textContent = payload.unit || "uV/V";
-    vexText.textContent = Number.isFinite(Number(payload.vex_value)) ? String(payload.vex_value) : "--";
-    updatedAt.textContent = payload.updated_at || "--";
-    ageSec.textContent = "0";
-    lastUpdatedAtMs = null;
-
-    clearAllCharts();
-    resetStatsText();
-  }
-
-  function appendPoint(chart, x, mean, min, max) {
-    const dsMax = chart.data.datasets[0].data;
-    const dsMin = chart.data.datasets[1].data;
-    const dsMean = chart.data.datasets[2].data;
-
-    const lastMean = dsMean.length ? dsMean[dsMean.length - 1] : null;
-    if (lastMean && lastMean.x === x) return;
-
-    dsMax.push({ x, y: max });
-    dsMin.push({ x, y: min });
-    dsMean.push({ x, y: mean });
-
-    if (dsMean.length > MAX_POINTS) {
-      dsMax.splice(0, dsMax.length - MAX_POINTS);
-      dsMin.splice(0, dsMin.length - MAX_POINTS);
-      dsMean.splice(0, dsMean.length - MAX_POINTS);
-    }
-
-    chart.update("none");
-  }
-
-  function applyPayload(payload) {
-    if (!payload || !payload.channels) return;
-
-    if (!activeRunId || payload.run_id !== activeRunId) {
-      switchToRun(payload);
-    }
-
-    if (!runStartMs && payload.run_started_at) {
-      runStartMs = Date.parse(payload.run_started_at);
-    }
-
-    const ts = payload._received_at || payload.updated_at || null;
-    if (!ts) return;
-
-    const ms = Date.parse(ts);
-    if (!Number.isFinite(ms)) return;
-
-    lastUpdatedAtMs = ms;
-    updatedAt.textContent = ts;
-    runIdText.textContent = payload.run_id || "--";
-    fileNameText.textContent = payload.file_name || "--";
-    unitText.textContent = payload.unit || "uV/V";
-    vexText.textContent = Number.isFinite(Number(payload.vex_value)) ? String(payload.vex_value) : "--";
-
-    const x = runStartMs ? ((ms - runStartMs) / 1000.0) : (ms / 1000.0);
-
-    for (const key of CHANNEL_KEYS) {
-      const channel = payload.channels[key];
-      if (!channel) continue;
-
-      statsEls[key].textContent =
-        `mean ${fmt(channel.mean)} | min ${fmt(channel.min)} | max ${fmt(channel.max)}`;
-
-      appendPoint(
-        charts[key],
-        x,
-        Number(channel.mean),
-        Number(channel.min),
-        Number(channel.max)
-      );
-    }
-  }
-
-  async function loadHistory() {
-    try {
-      const resp = await fetch(API_BASE + "/history", { cache: "no-store" });
-      if (!resp.ok) return;
-
-      const snapshot = await resp.json();
-      if (!snapshot || !snapshot.run_id) return;
-
-      switchToRun({
-        run_id: snapshot.run_id,
-        run_started_at: snapshot.run_started_at,
-        file_name: snapshot.file_name,
-        updated_at: snapshot.latest?.updated_at || snapshot.run_started_at,
-        unit: snapshot.latest?.unit || "uV/V",
-        vex_value: snapshot.latest?.vex_value
       });
-
-      for (const point of snapshot.points || []) {
-        applyPayload(point);
-      }
-    } catch (e) {
-      console.error("History load failed", e);
-    }
-  }
-
-  setInterval(() => {
-    if (!lastUpdatedAtMs) return;
-
-    const currentAge = Math.max(0, Math.round((Date.now() - lastUpdatedAtMs) / 1000));
-    ageSec.textContent = String(currentAge);
-
-    if (currentAge <= 10) setStatus("LIVE", "ok");
-    else if (currentAge <= 30) setStatus("STALE", "");
-    else setStatus("OFFLINE", "bad");
-  }, 1000);
-
-  async function start() {
-    for (const key of CHANNEL_KEYS) {
-      makeCard(key);
     }
 
-    await loadHistory();
+    function clearChart(chart) {
+      chart.data.datasets.forEach(ds => ds.data = []);
+      chart.update("none");
+    }
 
-    const ws = new WebSocket(WS_URL);
+    function clearAllCharts() {
+      for (const key of CHANNEL_KEYS) {
+        clearChart(charts[key]);
+      }
+    }
 
-    ws.onopen = () => setStatus("CONNECTED", "ok");
-    ws.onclose = () => setStatus("CLOSED", "bad");
-    ws.onerror = () => setStatus("ERROR", "bad");
+    function resetStatsText() {
+      for (const key of CHANNEL_KEYS) {
+        statsEls[key].textContent = "mean -- | min -- | max --";
+      }
+    }
 
-    ws.onmessage = (e) => {
-      let msg;
-      try {
-        msg = JSON.parse(e.data);
-      } catch {
-        return;
+    function switchToRun(payload) {
+      activeRunId = payload.run_id || null;
+      runStartMs = payload.run_started_at ? Date.parse(payload.run_started_at) : null;
+
+      runIdText.textContent = activeRunId || "--";
+      fileNameText.textContent = payload.file_name || "--";
+      unitText.textContent = payload.unit || "uV/V";
+      vexText.textContent = Number.isFinite(Number(payload.vex_value)) ? String(payload.vex_value) : "--";
+      updatedAt.textContent = payload.updated_at || "--";
+      ageSec.textContent = "0";
+      lastUpdatedAtMs = null;
+
+      clearAllCharts();
+      resetStatsText();
+    }
+
+    function appendPoint(chart, x, mean, min, max) {
+      const dsMax = chart.data.datasets[0].data;
+      const dsMin = chart.data.datasets[1].data;
+      const dsMean = chart.data.datasets[2].data;
+
+      const lastMean = dsMean.length ? dsMean[dsMean.length - 1] : null;
+      if (lastMean && lastMean.x === x) return;
+
+      dsMax.push({ x, y: max });
+      dsMin.push({ x, y: min });
+      dsMean.push({ x, y: mean });
+
+      if (dsMean.length > MAX_POINTS) {
+        dsMax.splice(0, dsMax.length - MAX_POINTS);
+        dsMin.splice(0, dsMin.length - MAX_POINTS);
+        dsMean.splice(0, dsMean.length - MAX_POINTS);
       }
 
-      const payload = msg.data || null;
-      if (!payload) return;
+      chart.update("none");
+    }
 
-      if (msg.type === "reset" || payload.reset === true) {
+    function applyPayload(payload) {
+      if (!payload || !payload.channels) return;
+
+      if (!activeRunId || payload.run_id !== activeRunId) {
         switchToRun(payload);
-        setStatus("NEW RUN", "ok");
-        return;
       }
 
-      applyPayload(payload);
-      setStatus("LIVE", "ok");
-    };
-  }
+      if (!runStartMs && payload.run_started_at) {
+        runStartMs = Date.parse(payload.run_started_at);
+      }
 
-  start();
-</script>
+      const ts = payload._received_at || payload.updated_at || null;
+      if (!ts) return;
+
+      const ms = Date.parse(ts);
+      if (!Number.isFinite(ms)) return;
+
+      lastUpdatedAtMs = ms;
+      updatedAt.textContent = ts;
+      runIdText.textContent = payload.run_id || "--";
+      fileNameText.textContent = payload.file_name || "--";
+      unitText.textContent = payload.unit || "uV/V";
+      vexText.textContent = Number.isFinite(Number(payload.vex_value)) ? String(payload.vex_value) : "--";
+
+      const x = runStartMs ? ((ms - runStartMs) / 1000.0) : (ms / 1000.0);
+
+      for (const key of CHANNEL_KEYS) {
+        const channel = payload.channels[key];
+        if (!channel) continue;
+
+        statsEls[key].textContent =
+          `mean ${fmt(channel.mean)} | min ${fmt(channel.min)} | max ${fmt(channel.max)}`;
+
+        appendPoint(
+          charts[key],
+          x,
+          Number(channel.mean),
+          Number(channel.min),
+          Number(channel.max)
+        );
+      }
+    }
+
+    async function loadHistory() {
+      try {
+        const resp = await fetch(API_BASE + "/history", { cache: "no-store" });
+        if (!resp.ok) return;
+
+        const snapshot = await resp.json();
+        if (!snapshot || !snapshot.run_id) return;
+
+        switchToRun({
+          run_id: snapshot.run_id,
+          run_started_at: snapshot.run_started_at,
+          file_name: snapshot.file_name,
+          updated_at: snapshot.latest?.updated_at || snapshot.run_started_at,
+          unit: snapshot.latest?.unit || "uV/V",
+          vex_value: snapshot.latest?.vex_value
+        });
+
+        for (const point of snapshot.points || []) {
+          applyPayload(point);
+        }
+      } catch (e) {
+        console.error("History load failed", e);
+      }
+    }
+
+    setInterval(() => {
+      if (!lastUpdatedAtMs) return;
+
+      const currentAge = Math.max(0, Math.round((Date.now() - lastUpdatedAtMs) / 1000));
+      ageSec.textContent = String(currentAge);
+
+      if (currentAge <= 10) setStatus("LIVE", "ok");
+      else if (currentAge <= 30) setStatus("STALE", "");
+      else setStatus("OFFLINE", "bad");
+    }, 1000);
+
+    async function start() {
+      for (const key of CHANNEL_KEYS) {
+        makeCard(key);
+      }
+
+      await loadHistory();
+
+      const ws = new WebSocket(WS_URL);
+
+      ws.onopen = () => setStatus("CONNECTED", "ok");
+      ws.onclose = () => setStatus("CLOSED", "bad");
+      ws.onerror = () => setStatus("ERROR", "bad");
+
+      ws.onmessage = (e) => {
+        let msg;
+        try {
+          msg = JSON.parse(e.data);
+        } catch {
+          return;
+        }
+
+        const payload = msg.data || null;
+        if (!payload) return;
+
+        if (msg.type === "reset" || payload.reset === true) {
+          switchToRun(payload);
+          setStatus("NEW RUN", "ok");
+          return;
+        }
+
+        applyPayload(payload);
+        setStatus("LIVE", "ok");
+      };
+    }
+
+    start();
+  </script>
 </body>
 </html>
