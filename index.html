@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>NI Live Dashboard</title>
+  <title>NI Strain Dashboard</title>
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
   <style>
     * { box-sizing: border-box; }
@@ -78,7 +78,7 @@
       border: 1px solid rgba(255,255,255,.08);
       border-radius: 12px;
       padding: 10px;
-      height: 340px;
+      height: 350px;
     }
 
     .chart-title {
@@ -148,7 +148,7 @@
 </head>
 <body>
   <div class="app">
-    <h1>NI Live Dashboard</h1>
+    <h1>NI Strain Dashboard</h1>
 
     <div class="status-bar">
       <div class="pill">
@@ -157,7 +157,7 @@
       </div>
       <div class="pill">Run: <span id="runIdText">--</span></div>
       <div class="pill">File: <span id="fileNameText">--</span></div>
-      <div class="pill">Unit: <span id="unitText">uV/V</span></div>
+      <div class="pill">Unit: <span id="unitText">µε</span></div>
       <div class="pill">Vex: <span id="vexText">--</span> V</div>
       <div class="pill">Updated: <span id="updatedAt">--</span></div>
       <div class="pill">Age: <span id="ageSec">--</span>s</div>
@@ -249,13 +249,7 @@
       const sorted = Array.from(timeMap.values()).sort((a, b) => Number(a.t) - Number(b.t));
 
       for (const row of sorted) {
-        rows.push([
-          row.t,
-          row.ai0,
-          row.ai1,
-          row.ai2,
-          row.ai3
-        ]);
+        rows.push([row.t, row.ai0, row.ai1, row.ai2, row.ai3]);
       }
 
       return rows.map(row => row.join(";")).join("\n");
@@ -264,7 +258,7 @@
     function downloadWideCsv() {
       const csv = buildWideCsv();
       const runId = activeRunId || "no_run";
-      downloadTextFile(`ni_dashboard_${runId}.csv`, csv);
+      downloadTextFile(`strain_${runId}.csv`, csv);
     }
 
     function makeCard(channelKey) {
@@ -358,7 +352,7 @@
               grid: { color: "rgba(255,255,255,0.08)" }
             },
             y: {
-              title: { display: true, text: "uV/V" },
+              title: { display: true, text: "µε" },
               ticks: { color: "#cbd5e1", maxTicksLimit: 6 },
               grid: { color: "rgba(255,255,255,0.08)" }
             }
@@ -395,7 +389,7 @@
 
       runIdText.textContent = activeRunId || "--";
       fileNameText.textContent = payload.file_name || "--";
-      unitText.textContent = payload.unit || "uV/V";
+      unitText.textContent = payload.unit || "µε";
       vexText.textContent = Number.isFinite(Number(payload.vex_value)) ? String(payload.vex_value) : "--";
       updatedAt.textContent = payload.updated_at || "--";
       ageSec.textContent = "0";
@@ -447,7 +441,7 @@
       updatedAt.textContent = ts;
       runIdText.textContent = payload.run_id || "--";
       fileNameText.textContent = payload.file_name || "--";
-      unitText.textContent = payload.unit || "uV/V";
+      unitText.textContent = payload.unit || "µε";
       vexText.textContent = Number.isFinite(Number(payload.vex_value)) ? String(payload.vex_value) : "--";
 
       const x = runStartMs ? ((ms - runStartMs) / 1000.0) : (ms / 1000.0);
@@ -456,8 +450,12 @@
         const channel = payload.channels[key];
         if (!channel) continue;
 
+        const gfText = Number.isFinite(Number(channel.gage_factor))
+          ? ` | k ${fmt(channel.gage_factor)}`
+          : "";
+
         statsEls[key].textContent =
-          `mean ${fmt(channel.mean)} | min ${fmt(channel.min)} | max ${fmt(channel.max)}`;
+          `mean ${fmt(channel.mean)} | min ${fmt(channel.min)} | max ${fmt(channel.max)}${gfText}`;
 
         appendPoint(
           charts[key],
@@ -482,7 +480,7 @@
           run_started_at: snapshot.run_started_at,
           file_name: snapshot.file_name,
           updated_at: snapshot.latest?.updated_at || snapshot.run_started_at,
-          unit: snapshot.latest?.unit || "uV/V",
+          unit: snapshot.latest?.unit || "µε",
           vex_value: snapshot.latest?.vex_value
         });
 
