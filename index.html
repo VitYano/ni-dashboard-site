@@ -4,7 +4,10 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <title>NI Strain Dashboard</title>
+
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+  <script src="https://cdn.plot.ly/plotly-2.35.2.min.js"></script>
+
   <style>
     * { box-sizing: border-box; }
 
@@ -24,7 +27,7 @@
 
     .app {
       display: grid;
-      grid-template-rows: auto auto 1fr;
+      grid-template-rows: auto auto auto auto;
       gap: 10px;
       min-height: calc(100vh - 20px);
     }
@@ -33,6 +36,13 @@
       margin: 0;
       font-size: 22px;
       line-height: 1.2;
+    }
+
+    .section-title {
+      margin: 6px 0 0 0;
+      font-size: 18px;
+      line-height: 1.2;
+      color: #cbd5e1;
     }
 
     .status-bar {
@@ -63,7 +73,8 @@
     .ok { background: #22c55e; }
     .bad { background: #ef4444; }
 
-    .charts {
+    .charts,
+    .rainflow-grid {
       min-height: 0;
       display: grid;
       grid-template-columns: repeat(4, 1fr);
@@ -79,6 +90,17 @@
       border-radius: 12px;
       padding: 10px;
       height: 350px;
+    }
+
+    .rf-card {
+      min-height: 0;
+      display: grid;
+      grid-template-rows: auto auto 1fr;
+      background: #1e293b;
+      border: 1px solid rgba(255,255,255,.08);
+      border-radius: 12px;
+      padding: 10px;
+      height: 390px;
     }
 
     .chart-title {
@@ -97,12 +119,14 @@
       text-overflow: ellipsis;
     }
 
-    .canvas-wrap {
+    .canvas-wrap,
+    .plot-wrap {
       min-height: 0;
       position: relative;
     }
 
-    .canvas-wrap canvas {
+    .canvas-wrap canvas,
+    .plot-wrap > div {
       width: 100% !important;
       height: 100% !important;
       display: block;
@@ -130,18 +154,21 @@
     }
 
     @media (max-width: 1400px) {
-      .charts {
+      .charts,
+      .rainflow-grid {
         grid-template-columns: repeat(2, 1fr);
       }
     }
 
     @media (max-width: 900px) {
-      .charts {
+      .charts,
+      .rainflow-grid {
         grid-template-columns: 1fr;
       }
 
-      .card {
-        height: 320px;
+      .card,
+      .rf-card {
+        height: 340px;
       }
     }
   </style>
@@ -161,9 +188,14 @@
       <div class="pill">Vex: <span id="vexText">--</span> V</div>
       <div class="pill">Updated: <span id="updatedAt">--</span></div>
       <div class="pill">Age: <span id="ageSec">--</span>s</div>
+      <div class="pill">Rainflow: <span id="rainflowElapsedText">--</span></div>
     </div>
 
+    <h2 class="section-title">Live strain</h2>
     <div class="charts" id="charts"></div>
+
+    <h2 class="section-title">Accumulated rainflow matrix</h2>
+    <div class="rainflow-grid" id="rainflowGrid"></div>
   </div>
 
   <script>
@@ -180,7 +212,9 @@
     const vexText = document.getElementById("vexText");
     const updatedAt = document.getElementById("updatedAt");
     const ageSec = document.getElementById("ageSec");
+    const rainflowElapsedText = document.getElementById("rainflowElapsedText");
     const chartsEl = document.getElementById("charts");
+    const rainflowGridEl = document.getElementById("rainflowGrid");
 
     let activeRunId = null;
     let runStartMs = null;
@@ -219,6 +253,12 @@
       }
 
       return v.toFixed(0) + " s";
+    }
+
+    function formatElapsed(seconds) {
+      const s = Number(seconds);
+      if (!Number.isFinite(s)) return "--";
+      return formatTimeTick(s);
     }
 
     function downloadTextFile(filename, content, contentType = "text/csv;charset=utf-8;") {
@@ -327,6 +367,35 @@
       charts[channelKey] = makeChart(canvas.id, upper);
     }
 
+    function makeRainflowCard(channelKey) {
+      const upper = channelKey.toUpperCase();
+
+      const card = document.createElement("div");
+      card.className = "rf-card";
+
+      const title = document.createElement("h2");
+      title.className = "chart-title";
+      title.textContent = upper + " rainflow";
+
+      const stats = document.createElement("div");
+      stats.className = "stats";
+      stats.id = `rainflow-stats-${channelKey}`;
+      stats.textContent = "range -- | mean -- | cycles --";
+
+      const wrap = document.createElement("div");
+      wrap.className = "plot-wrap";
+
+      const plot = document.createElement("div");
+      plot.id = `rainflow-${channelKey}`;
+
+      wrap.appendChild(plot);
+
+      card.appendChild(title);
+      card.appendChild(stats);
+      card.appendChild(wrap);
+      rainflowGridEl.appendChild(card);
+    }
+
     function makeChart(canvasId, label) {
       const ctx = document.getElementById(canvasId).getContext("2d");
 
@@ -350,7 +419,7 @@
               label: label + " max",
               data: [],
               borderColor: "rgba(239,68,68,0)",
-              backgroundColor: "rgba(255, 120, 120, 0.30)",
+              backgroundColor: "rgba(255,120,120,0.30)",
               borderWidth: 0,
               pointRadius: 0,
               pointHoverRadius: 0,
@@ -413,8 +482,7 @@
               callbacks: {
                 title(items) {
                   if (!items || !items.length) return "";
-                  const x = items[0].parsed.x;
-                  return "t: " + formatTimeTick(x);
+                  return "t: " + formatTimeTick(items[0].parsed.x);
                 },
                 label(context) {
                   const y = Number(context.parsed.y).toFixed(3);
@@ -531,6 +599,91 @@
       }
     }
 
+    function renderRainflowChart(channelKey, payload) {
+      const elId = `rainflow-${channelKey}`;
+      const statsEl = document.getElementById(`rainflow-stats-${channelKey}`);
+
+      if (!payload || !payload.range_bins?.length || !payload.mean_bins?.length || !payload.matrix?.length) {
+        if (statsEl) statsEl.textContent = "range -- | mean -- | cycles --";
+        Plotly.react(elId, [], {
+          paper_bgcolor: "#1e293b",
+          plot_bgcolor: "#1e293b",
+          font: { color: "#e2e8f0" }
+        }, { responsive: true, displayModeBar: false });
+        return;
+      }
+
+      let totalCycles = 0;
+      for (const row of payload.matrix) {
+        for (const v of row) {
+          totalCycles += Number(v) || 0;
+        }
+      }
+
+      const rangeMin = payload.range_bins[0];
+      const rangeMax = payload.range_bins[payload.range_bins.length - 1];
+      const meanMin = payload.mean_bins[0];
+      const meanMax = payload.mean_bins[payload.mean_bins.length - 1];
+
+      if (statsEl) {
+        statsEl.textContent =
+          `range ${fmt(rangeMin)} .. ${fmt(rangeMax)} | mean ${fmt(meanMin)} .. ${fmt(meanMax)} | cycles ${fmt(totalCycles)}`;
+      }
+
+      Plotly.react(
+        elId,
+        [{
+          type: "surface",
+          x: payload.range_bins,
+          y: payload.mean_bins,
+          z: payload.matrix,
+          colorscale: "Viridis",
+          showscale: true
+        }],
+        {
+          paper_bgcolor: "#1e293b",
+          plot_bgcolor: "#1e293b",
+          font: { color: "#e2e8f0" },
+          margin: { l: 0, r: 0, b: 0, t: 10 },
+          scene: {
+            bgcolor: "#1e293b",
+            xaxis: {
+              title: "Range (µε)",
+              color: "#e2e8f0",
+              gridcolor: "rgba(255,255,255,0.08)",
+              zerolinecolor: "rgba(255,255,255,0.08)"
+            },
+            yaxis: {
+              title: "Mean (µε)",
+              color: "#e2e8f0",
+              gridcolor: "rgba(255,255,255,0.08)",
+              zerolinecolor: "rgba(255,255,255,0.08)"
+            },
+            zaxis: {
+              title: "Count",
+              color: "#e2e8f0",
+              gridcolor: "rgba(255,255,255,0.08)",
+              zerolinecolor: "rgba(255,255,255,0.08)"
+            }
+          }
+        },
+        {
+          responsive: true,
+          displayModeBar: false
+        }
+      );
+    }
+
+    function applyRainflowPayload(payload) {
+      if (!payload || !payload.channels) return;
+
+      rainflowElapsedText.textContent = formatElapsed(payload.elapsed_seconds);
+
+      for (const key of CHANNEL_KEYS) {
+        renderRainflowChart(key, payload.channels[key]);
+      }
+    }
+
     async function loadHistory() {
       try {
         const resp = await fetch(API_BASE + "/history", { cache: "no-store" });
@@ -556,6 +709,20 @@
       }
     }
 
+    async function loadRainflowLatest() {
+      try {
+        const resp = await fetch(API_BASE + "/rainflow/latest", { cache: "no-store" });
+        if (!resp.ok) return;
+
+        const payload = await resp.json();
+        if (!payload) return;
+
+        applyRainflowPayload(payload);
+      } catch (e) {
+        console.error("Rainflow load failed", e);
+      }
+    }
+
     setInterval(() => {
       if (!lastUpdatedAtMs) return;
 
@@ -570,9 +737,11 @@
     async function start() {
       for (const key of CHANNEL_KEYS) {
         makeCard(key);
+        makeRainflowCard(key);
       }
 
       await loadHistory();
+      await loadRainflowLatest();
 
       const ws = new WebSocket(WS_URL);
 
@@ -594,6 +763,11 @@
         if (msg.type === "reset" || payload.reset === true) {
           switchToRun(payload);
           setStatus("NEW RUN", "ok");
+          return;
+        }
+
+        if (msg.type === "rainflow") {
+          applyRainflowPayload(payload);
           return;
         }
 
