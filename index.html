@@ -218,7 +218,7 @@
 
       for (const key of CHANNEL_KEYS) {
         const chart = charts[key];
-        meanSeries[key] = chart ? chart.data.datasets[2].data : [];
+        meanSeries[key] = chart ? chart.data.datasets[1].data : [];
       }
 
       const timeMap = new Map();
@@ -313,20 +313,11 @@
         data: {
           datasets: [
             {
-              label: label + " max area",
+              label: label + " band",
               data: [],
-              borderColor: "rgba(239,68,68,0)",
-              backgroundColor: "rgba(239,68,68,0.20)",
+              borderWidth: 0,
               pointRadius: 0,
-              fill: { target: 2 }
-            },
-            {
-              label: label + " max",
-              data: [],
-              borderColor: "rgba(239,68,68,0.85)",
-              backgroundColor: "rgba(239,68,68,0.85)",
-              pointRadius: 0,
-              tension: 0.15,
+              backgroundColor: "rgba(59,130,246,0.22)",
               fill: false
             },
             {
@@ -334,26 +325,18 @@
               data: [],
               borderColor: "#22c55e",
               backgroundColor: "#22c55e",
-              pointRadius: 2,
+              borderWidth: 2,
+              pointRadius: 1.5,
               tension: 0.15,
               fill: false
             },
             {
-              label: label + " min area",
+              label: label + " upper band",
               data: [],
-              borderColor: "rgba(59,130,246,0)",
-              backgroundColor: "rgba(59,130,246,0.20)",
+              borderWidth: 0,
               pointRadius: 0,
-              fill: { target: 2 }
-            },
-            {
-              label: label + " min",
-              data: [],
-              borderColor: "rgba(59,130,246,0.85)",
-              backgroundColor: "rgba(59,130,246,0.85)",
-              pointRadius: 0,
-              tension: 0.15,
-              fill: false
+              backgroundColor: "rgba(239,68,68,0.22)",
+              fill: { target: 1 }
             }
           ]
         },
@@ -366,19 +349,26 @@
           scales: {
             x: {
               type: "linear",
-              title: { display: true, text: "t (s)" },
+              title: { display: true, text: "t (s)", color: "#94a3b8" },
               ticks: { color: "#cbd5e1", maxTicksLimit: 6 },
               grid: { color: "rgba(255,255,255,0.08)" }
             },
             y: {
-              title: { display: true, text: "µε" },
+              title: { display: true, text: "µε", color: "#94a3b8" },
               ticks: { color: "#cbd5e1", maxTicksLimit: 6 },
               grid: { color: "rgba(255,255,255,0.08)" }
             }
           },
           plugins: {
             legend: {
-              labels: { color: "#e2e8f0", boxWidth: 12, font: { size: 11 } }
+              labels: {
+                color: "#e2e8f0",
+                boxWidth: 12,
+                font: { size: 11 },
+                filter(item) {
+                  return item.datasetIndex === 1;
+                }
+              }
             }
           }
         }
@@ -419,27 +409,21 @@
     }
 
     function appendPoint(chart, x, mean, min, max) {
-      const dsMaxArea = chart.data.datasets[0].data;
-      const dsMaxLine = chart.data.datasets[1].data;
-      const dsMean = chart.data.datasets[2].data;
-      const dsMinArea = chart.data.datasets[3].data;
-      const dsMinLine = chart.data.datasets[4].data;
+      const dsMinBand = chart.data.datasets[0].data;
+      const dsMean = chart.data.datasets[1].data;
+      const dsMaxBand = chart.data.datasets[2].data;
 
       const lastMean = dsMean.length ? dsMean[dsMean.length - 1] : null;
       if (lastMean && lastMean.x === x) return;
 
-      dsMaxArea.push({ x, y: max });
-      dsMaxLine.push({ x, y: max });
+      dsMinBand.push({ x, y: min });
       dsMean.push({ x, y: mean });
-      dsMinArea.push({ x, y: min });
-      dsMinLine.push({ x, y: min });
+      dsMaxBand.push({ x, y: max });
 
       if (dsMean.length > MAX_POINTS) {
-        dsMaxArea.splice(0, dsMaxArea.length - MAX_POINTS);
-        dsMaxLine.splice(0, dsMaxLine.length - MAX_POINTS);
+        dsMinBand.splice(0, dsMinBand.length - MAX_POINTS);
         dsMean.splice(0, dsMean.length - MAX_POINTS);
-        dsMinArea.splice(0, dsMinArea.length - MAX_POINTS);
-        dsMinLine.splice(0, dsMinLine.length - MAX_POINTS);
+        dsMaxBand.splice(0, dsMaxBand.length - MAX_POINTS);
       }
 
       chart.update("none");
@@ -475,12 +459,8 @@
         const channel = payload.channels[key];
         if (!channel) continue;
 
-        const gfText = Number.isFinite(Number(channel.gage_factor))
-          ? ` | k ${fmt(channel.gage_factor)}`
-          : "";
-
         statsEls[key].textContent =
-          `mean ${fmt(channel.mean)} | min ${fmt(channel.min)} | max ${fmt(channel.max)}${gfText}`;
+          `mean ${fmt(channel.mean)} | min ${fmt(channel.min)} | max ${fmt(channel.max)}`;
 
         appendPoint(
           charts[key],
