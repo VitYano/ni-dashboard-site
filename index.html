@@ -735,7 +735,8 @@
           nameTextStyle: { color: "#e2e8f0" },
           axisLabel: { color: "#cbd5e1" },
           axisLine: { lineStyle: { color: "#64748b" } },
-          splitLine: { lineStyle: { color: "rgba(255,255,255,0.08)" } }
+          splitLine: { lineStyle: { color: "rgba(255,255,255,0.05)" } },
+          axisPointer: { show: false }
         },
         yAxis3D: {
           type: "value",
@@ -745,7 +746,8 @@
           nameTextStyle: { color: "#e2e8f0" },
           axisLabel: { color: "#cbd5e1" },
           axisLine: { lineStyle: { color: "#64748b" } },
-          splitLine: { lineStyle: { color: "rgba(255,255,255,0.08)" } }
+          splitLine: { lineStyle: { color: "rgba(255,255,255,0.05)" } },
+          axisPointer: { show: false }
         },
         zAxis3D: {
           type: "value",
@@ -754,14 +756,15 @@
           nameTextStyle: { color: "#e2e8f0" },
           axisLabel: { color: "#cbd5e1" },
           axisLine: { lineStyle: { color: "#64748b" } },
-          splitLine: { lineStyle: { color: "rgba(255,255,255,0.08)" } }
+          splitLine: { lineStyle: { color: "rgba(255,255,255,0.05)" } },
+          axisPointer: { show: false }
         },
         grid3D: {
           boxWidth: 90,
           boxDepth: 90,
           boxHeight: 80,
-          axisPointer: { show: false },
           environment: "transparent",
+          axisPointer: { show: false },
           viewControl: {
             projection: "perspective",
             autoRotate: false,
@@ -780,7 +783,7 @@
               intensity: 0.45
             }
           }
-        },
+        }
         series: [
           {
             type: "bar3D",
@@ -914,4 +917,5 @@
   </script>
 </body>
 </html>
+
 
