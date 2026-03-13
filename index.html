@@ -100,7 +100,7 @@
       border: 1px solid rgba(255,255,255,.08);
       border-radius: 12px;
       padding: 10px;
-      height: 420px;
+      height: 430px;
     }
 
     .chart-title {
@@ -655,24 +655,25 @@
           [],
           {
             paper_bgcolor: "rgba(0,0,0,0)",
-            plot_bgcolor: "rgba(0,0,0,0)",
-            font: { color: "#e2e8f0" }
+            plot_bgcolor: "rgba(255,255,255,0.96)",
+            font: { color: "#0f172a" }
           },
           { responsive: true, displayModeBar: false }
         );
         return;
       }
 
-      const rawX = payload.range_bins.map(v => Number(v));
-      const rawY = payload.mean_bins.map(v => Number(v));
+      const x = payload.range_bins.map(v => Math.max(0, Number(v)));
+      const y = payload.mean_bins.map(v => Math.max(0, Number(v)));
       const z = payload.matrix.map(row => row.map(v => Number(v) || 0));
 
-      const x = rawX.map(v => Math.max(0, v));
-      const y = rawY.map(v => Math.max(0, v));
-
       let totalCycles = 0;
+      let zMax = 0;
       for (const row of z) {
-        for (const v of row) totalCycles += v;
+        for (const v of row) {
+          totalCycles += v;
+          if (v > zMax) zMax = v;
+        }
       }
 
       const rangeMin = x.length ? Math.min(...x) : 0;
@@ -685,6 +686,16 @@
           `range ${fmt(rangeMin)} .. ${fmt(rangeMax)} | mean ${fmt(meanMin)} .. ${fmt(meanMax)} | cycles ${fmt(totalCycles)}`;
       }
 
+      const showText = x.length <= 16 && y.length <= 16;
+
+      const textMatrix = z.map(row =>
+        row.map(v => {
+          if (v <= 0) return "";
+          if (v >= 1000) return (v / 1000).toFixed(1) + "k";
+          return String(Math.round(v));
+        })
+      );
+
       Plotly.react(
         elId,
         [
@@ -693,19 +704,29 @@
             x: x,
             y: y,
             z: z,
-            colorscale: [
-              [0.0, "#0b3b8f"],
-              [0.2, "#1f77b4"],
-              [0.4, "#2ca02c"],
-              [0.6, "#f1c40f"],
-              [0.8, "#f39c12"],
-              [1.0, "#e74c3c"]
-            ],
             zmin: 0,
+            zmax: Math.max(zMax, 1),
+            colorscale: [
+              [0.00, "#f8fafc"],
+              [0.10, "#dbeafe"],
+              [0.25, "#93c5fd"],
+              [0.45, "#60a5fa"],
+              [0.65, "#f1c40f"],
+              [0.82, "#fb923c"],
+              [1.00, "#ef4444"]
+            ],
             hovertemplate:
               "Range: %{x:.3f} µε<br>" +
               "Mean: %{y:.3f} µε<br>" +
               "Count: %{z:.3f}<extra></extra>",
+            text: showText ? textMatrix : undefined,
+            texttemplate: showText ? "%{text}" : undefined,
+            textfont: {
+              color: "#0f172a",
+              size: 10
+            },
+            xgap: 1,
+            ygap: 1,
             colorbar: {
               title: {
                 text: "Count",
@@ -720,26 +741,30 @@
         ],
         {
           paper_bgcolor: "rgba(0,0,0,0)",
-          plot_bgcolor: "rgba(0,0,0,0)",
-          font: { color: "#e2e8f0" },
-          margin: { l: 55, r: 30, t: 10, b: 50 },
+          plot_bgcolor: "rgba(255,255,255,0.97)",
+          font: { color: "#0f172a" },
+          margin: { l: 65, r: 40, t: 10, b: 60 },
           xaxis: {
             title: "Range (µε)",
             rangemode: "tozero",
             zeroline: false,
-            gridcolor: "rgba(255,255,255,0.08)",
-            linecolor: "rgba(255,255,255,0.18)",
-            tickfont: { color: "#cbd5e1" },
-            titlefont: { color: "#e2e8f0" }
+            showgrid: true,
+            gridcolor: "rgba(15,23,42,0.10)",
+            linecolor: "rgba(15,23,42,0.28)",
+            tickfont: { color: "#0f172a" },
+            titlefont: { color: "#0f172a" },
+            fixedrange: true
           },
           yaxis: {
             title: "Mean (µε)",
             rangemode: "tozero",
             zeroline: false,
-            gridcolor: "rgba(255,255,255,0.08)",
-            linecolor: "rgba(255,255,255,0.18)",
-            tickfont: { color: "#cbd5e1" },
-            titlefont: { color: "#e2e8f0" }
+            showgrid: true,
+            gridcolor: "rgba(15,23,42,0.10)",
+            linecolor: "rgba(15,23,42,0.28)",
+            tickfont: { color: "#0f172a" },
+            titlefont: { color: "#0f172a" },
+            fixedrange: true
           }
         },
         {
