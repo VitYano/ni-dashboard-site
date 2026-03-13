@@ -313,12 +313,15 @@
         data: {
           datasets: [
             {
-              label: label + " band",
+              label: label + " min area",
               data: [],
+              borderColor: "rgba(0,0,0,0)",
+              backgroundColor: "rgba(59,130,246,0.22)",
               borderWidth: 0,
               pointRadius: 0,
-              backgroundColor: "rgba(59,130,246,0.22)",
-              fill: false
+              pointHoverRadius: 0,
+              tension: 0.15,
+              fill: { target: 1 }
             },
             {
               label: label + " mean",
@@ -326,16 +329,20 @@
               borderColor: "#22c55e",
               backgroundColor: "#22c55e",
               borderWidth: 2,
-              pointRadius: 1.5,
+              pointRadius: 0,
+              pointHoverRadius: 3,
               tension: 0.15,
               fill: false
             },
             {
-              label: label + " upper band",
+              label: label + " max area",
               data: [],
+              borderColor: "rgba(0,0,0,0)",
+              backgroundColor: "rgba(239,68,68,0.22)",
               borderWidth: 0,
               pointRadius: 0,
-              backgroundColor: "rgba(239,68,68,0.22)",
+              pointHoverRadius: 0,
+              tension: 0.15,
               fill: { target: 1 }
             }
           ]
@@ -346,15 +353,19 @@
           animation: false,
           parsing: false,
           normalized: true,
+          interaction: {
+            mode: "index",
+            intersect: false
+          },
           scales: {
             x: {
               type: "linear",
-              title: { display: true, text: "t (s)", color: "#94a3b8" },
+              title: { display: true, text: "t (s)" },
               ticks: { color: "#cbd5e1", maxTicksLimit: 6 },
               grid: { color: "rgba(255,255,255,0.08)" }
             },
             y: {
-              title: { display: true, text: "µε", color: "#94a3b8" },
+              title: { display: true, text: "µε" },
               ticks: { color: "#cbd5e1", maxTicksLimit: 6 },
               grid: { color: "rgba(255,255,255,0.08)" }
             }
@@ -367,6 +378,15 @@
                 font: { size: 11 },
                 filter(item) {
                   return item.datasetIndex === 1;
+                }
+              }
+            },
+            tooltip: {
+              callbacks: {
+                label(context) {
+                  if (context.datasetIndex !== 1) return null;
+                  const y = context.parsed.y;
+                  return `${label} mean: ${Number(y).toFixed(3)}`;
                 }
               }
             }
@@ -409,21 +429,21 @@
     }
 
     function appendPoint(chart, x, mean, min, max) {
-      const dsMinBand = chart.data.datasets[0].data;
+      const dsMinArea = chart.data.datasets[0].data;
       const dsMean = chart.data.datasets[1].data;
-      const dsMaxBand = chart.data.datasets[2].data;
+      const dsMaxArea = chart.data.datasets[2].data;
 
       const lastMean = dsMean.length ? dsMean[dsMean.length - 1] : null;
       if (lastMean && lastMean.x === x) return;
 
-      dsMinBand.push({ x, y: min });
+      dsMinArea.push({ x, y: min });
       dsMean.push({ x, y: mean });
-      dsMaxBand.push({ x, y: max });
+      dsMaxArea.push({ x, y: max });
 
       if (dsMean.length > MAX_POINTS) {
-        dsMinBand.splice(0, dsMinBand.length - MAX_POINTS);
+        dsMinArea.splice(0, dsMinArea.length - MAX_POINTS);
         dsMean.splice(0, dsMean.length - MAX_POINTS);
-        dsMaxBand.splice(0, dsMaxBand.length - MAX_POINTS);
+        dsMaxArea.splice(0, dsMaxArea.length - MAX_POINTS);
       }
 
       chart.update("none");
