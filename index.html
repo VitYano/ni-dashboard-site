@@ -649,55 +649,55 @@
     function renderRainflowChart(channelKey, payload) {
       const el = document.getElementById(`rainflow-${channelKey}`);
       const statsEl = document.getElementById(`rainflow-stats-${channelKey}`);
-    
+
       if (!el) return;
-    
+
       if (!payload || !payload.range_bins?.length || !payload.mean_bins?.length || !payload.matrix?.length) {
         if (statsEl) statsEl.textContent = "range -- | mean -- | cycles --";
         const old = echarts.getInstanceByDom(el);
         if (old) old.clear();
         return;
       }
-    
+
       const rangeBins = payload.range_bins.map(Number);
       const meanBins = payload.mean_bins.map(Number);
       const matrix = payload.matrix.map(row => row.map(Number));
-    
+
       let totalCycles = 0;
       let maxCount = 0;
       const data = [];
-    
+
       for (let yi = 0; yi < meanBins.length; yi++) {
         for (let xi = 0; xi < rangeBins.length; xi++) {
           const count = Number(matrix[yi]?.[xi] ?? 0);
           totalCycles += count;
           if (count > maxCount) maxCount = count;
-    
+
           if (count > 0) {
             data.push([rangeBins[xi], meanBins[yi], count]);
           }
         }
       }
-    
+
       const rangeMin = rangeBins[0];
       const rangeMax = rangeBins[rangeBins.length - 1];
       const meanMin = meanBins[0];
       const meanMax = meanBins[meanBins.length - 1];
-    
+
       if (statsEl) {
         statsEl.textContent =
           `range ${fmt(rangeMin)} .. ${fmt(rangeMax)} | mean ${fmt(meanMin)} .. ${fmt(meanMax)} | cycles ${fmt(totalCycles)}`;
       }
-    
+
       let xStep = 1;
       let yStep = 1;
-    
+
       if (rangeBins.length > 1) xStep = Math.abs(rangeBins[1] - rangeBins[0]);
       if (meanBins.length > 1) yStep = Math.abs(meanBins[1] - meanBins[0]);
-    
+
       const chart = echarts.getInstanceByDom(el) || echarts.init(el);
       rainflowCharts[channelKey] = chart;
-    
+
       chart.setOption({
         backgroundColor: "transparent",
         animation: false,
@@ -720,9 +720,7 @@
           orient: "vertical",
           right: 0,
           top: "middle",
-          textStyle: {
-            color: "#e2e8f0"
-          },
+          textStyle: { color: "#e2e8f0" },
           inRange: {
             color: ["#313695", "#4575b4", "#74add1", "#abd9e9", "#fee090", "#fdae61", "#f46d43"]
           }
@@ -735,7 +733,7 @@
           nameTextStyle: { color: "#e2e8f0" },
           axisLabel: { color: "#cbd5e1" },
           axisLine: { lineStyle: { color: "#64748b" } },
-          splitLine: { lineStyle: { color: "rgba(255,255,255,0.05)" } },
+          splitLine: { show: false },
           axisPointer: { show: false }
         },
         yAxis3D: {
@@ -746,7 +744,7 @@
           nameTextStyle: { color: "#e2e8f0" },
           axisLabel: { color: "#cbd5e1" },
           axisLine: { lineStyle: { color: "#64748b" } },
-          splitLine: { lineStyle: { color: "rgba(255,255,255,0.05)" } },
+          splitLine: { show: false },
           axisPointer: { show: false }
         },
         zAxis3D: {
@@ -756,7 +754,7 @@
           nameTextStyle: { color: "#e2e8f0" },
           axisLabel: { color: "#cbd5e1" },
           axisLine: { lineStyle: { color: "#64748b" } },
-          splitLine: { lineStyle: { color: "rgba(255,255,255,0.05)" } },
+          splitLine: { show: false },
           axisPointer: { show: false }
         },
         grid3D: {
@@ -783,7 +781,7 @@
               intensity: 0.45
             }
           }
-        }
+        },
         series: [
           {
             type: "bar3D",
@@ -917,5 +915,3 @@
   </script>
 </body>
 </html>
-
-
