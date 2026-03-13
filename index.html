@@ -313,19 +313,21 @@
         data: {
           datasets: [
             {
-              label: label + " max",
+              label: label + " max area",
               data: [],
-              borderColor: "rgba(0,0,0,0)",
+              borderColor: "rgba(239,68,68,0)",
+              backgroundColor: "rgba(239,68,68,0.20)",
               pointRadius: 0,
-              fill: false
+              fill: { target: 2 }
             },
             {
-              label: label + " min",
+              label: label + " max",
               data: [],
-              borderColor: "rgba(0,0,0,0)",
-              backgroundColor: "rgba(34,197,94,0.18)",
+              borderColor: "rgba(239,68,68,0.85)",
+              backgroundColor: "rgba(239,68,68,0.85)",
               pointRadius: 0,
-              fill: "-1"
+              tension: 0.15,
+              fill: false
             },
             {
               label: label + " mean",
@@ -333,6 +335,23 @@
               borderColor: "#22c55e",
               backgroundColor: "#22c55e",
               pointRadius: 2,
+              tension: 0.15,
+              fill: false
+            },
+            {
+              label: label + " min area",
+              data: [],
+              borderColor: "rgba(59,130,246,0)",
+              backgroundColor: "rgba(59,130,246,0.20)",
+              pointRadius: 0,
+              fill: { target: 2 }
+            },
+            {
+              label: label + " min",
+              data: [],
+              borderColor: "rgba(59,130,246,0.85)",
+              backgroundColor: "rgba(59,130,246,0.85)",
+              pointRadius: 0,
               tension: 0.15,
               fill: false
             }
@@ -400,21 +419,27 @@
     }
 
     function appendPoint(chart, x, mean, min, max) {
-      const dsMax = chart.data.datasets[0].data;
-      const dsMin = chart.data.datasets[1].data;
+      const dsMaxArea = chart.data.datasets[0].data;
+      const dsMaxLine = chart.data.datasets[1].data;
       const dsMean = chart.data.datasets[2].data;
+      const dsMinArea = chart.data.datasets[3].data;
+      const dsMinLine = chart.data.datasets[4].data;
 
       const lastMean = dsMean.length ? dsMean[dsMean.length - 1] : null;
       if (lastMean && lastMean.x === x) return;
 
-      dsMax.push({ x, y: max });
-      dsMin.push({ x, y: min });
+      dsMaxArea.push({ x, y: max });
+      dsMaxLine.push({ x, y: max });
       dsMean.push({ x, y: mean });
+      dsMinArea.push({ x, y: min });
+      dsMinLine.push({ x, y: min });
 
       if (dsMean.length > MAX_POINTS) {
-        dsMax.splice(0, dsMax.length - MAX_POINTS);
-        dsMin.splice(0, dsMin.length - MAX_POINTS);
+        dsMaxArea.splice(0, dsMaxArea.length - MAX_POINTS);
+        dsMaxLine.splice(0, dsMaxLine.length - MAX_POINTS);
         dsMean.splice(0, dsMean.length - MAX_POINTS);
+        dsMinArea.splice(0, dsMinArea.length - MAX_POINTS);
+        dsMinLine.splice(0, dsMinLine.length - MAX_POINTS);
       }
 
       chart.update("none");
