@@ -213,23 +213,22 @@
       URL.revokeObjectURL(url);
     }
 
-
     function buildWideCsv() {
       const meanSeries = {};
-    
+
       for (const key of CHANNEL_KEYS) {
         const chart = charts[key];
         meanSeries[key] = chart ? chart.data.datasets[0].data : [];
       }
-    
+
       const timeMap = new Map();
-    
+
       for (const key of CHANNEL_KEYS) {
         for (const point of meanSeries[key]) {
           if (!point || !Number.isFinite(point.x)) continue;
-    
+
           const t = Number(point.x).toFixed(3);
-    
+
           if (!timeMap.has(t)) {
             timeMap.set(t, {
               t,
@@ -239,23 +238,22 @@
               ai3: ""
             });
           }
-    
+
           timeMap.get(t)[key] = Number(point.y).toFixed(3);
         }
       }
-    
+
       const rows = [];
       rows.push(["t", "ai0", "ai1", "ai2", "ai3"]);
-    
+
       const sorted = Array.from(timeMap.values()).sort((a, b) => Number(a.t) - Number(b.t));
-    
+
       for (const row of sorted) {
         rows.push([row.t, row.ai0, row.ai1, row.ai2, row.ai3]);
       }
-    
+
       return rows.map(row => row.join(";")).join("\n");
     }
-   
 
     function downloadWideCsv() {
       const csv = buildWideCsv();
@@ -307,10 +305,9 @@
       charts[channelKey] = makeChart(canvas.id, upper);
     }
 
- 
     function makeChart(canvasId, label) {
       const ctx = document.getElementById(canvasId).getContext("2d");
-    
+
       return new Chart(ctx, {
         type: "line",
         data: {
@@ -328,9 +325,9 @@
               order: 3
             },
             {
-              label: label + " max area",
+              label: label + " max",
               data: [],
-              borderColor: "rgba(0,0,0,0)",
+              borderColor: "rgba(239,68,68,0)",
               backgroundColor: "rgba(239,68,68,0.22)",
               borderWidth: 0,
               pointRadius: 0,
@@ -340,9 +337,9 @@
               order: 1
             },
             {
-              label: label + " min area",
+              label: label + " min",
               data: [],
-              borderColor: "rgba(0,0,0,0)",
+              borderColor: "rgba(59,130,246,0)",
               backgroundColor: "rgba(59,130,246,0.22)",
               borderWidth: 0,
               pointRadius: 0,
@@ -381,17 +378,17 @@
               labels: {
                 color: "#e2e8f0",
                 boxWidth: 12,
-                font: { size: 11 },
-                filter(item) {
-                  return item.datasetIndex === 0;
-                }
+                font: { size: 11 }
               }
             },
             tooltip: {
               callbacks: {
                 label(context) {
-                  if (context.datasetIndex !== 0) return null;
-                  return `${label} mean: ${Number(context.parsed.y).toFixed(3)}`;
+                  const y = Number(context.parsed.y).toFixed(3);
+                  if (context.datasetIndex === 0) return `${label} mean: ${y}`;
+                  if (context.datasetIndex === 1) return `${label} max: ${y}`;
+                  if (context.datasetIndex === 2) return `${label} min: ${y}`;
+                  return null;
                 }
               }
             }
@@ -399,7 +396,6 @@
         }
       });
     }
-
 
     function clearChart(chart) {
       chart.data.datasets.forEach(ds => ds.data = []);
@@ -434,28 +430,26 @@
       resetStatsText();
     }
 
-
     function appendPoint(chart, x, mean, min, max) {
       const dsMean = chart.data.datasets[0].data;
-      const dsMaxArea = chart.data.datasets[1].data;
-      const dsMinArea = chart.data.datasets[2].data;
-    
+      const dsMax = chart.data.datasets[1].data;
+      const dsMin = chart.data.datasets[2].data;
+
       const lastMean = dsMean.length ? dsMean[dsMean.length - 1] : null;
       if (lastMean && lastMean.x === x) return;
-    
+
       dsMean.push({ x, y: mean });
-      dsMaxArea.push({ x, y: max });
-      dsMinArea.push({ x, y: min });
-    
+      dsMax.push({ x, y: max });
+      dsMin.push({ x, y: min });
+
       if (dsMean.length > MAX_POINTS) {
         dsMean.splice(0, dsMean.length - MAX_POINTS);
-        dsMaxArea.splice(0, dsMaxArea.length - MAX_POINTS);
-        dsMinArea.splice(0, dsMinArea.length - MAX_POINTS);
+        dsMax.splice(0, dsMax.length - MAX_POINTS);
+        dsMin.splice(0, dsMin.length - MAX_POINTS);
       }
-    
+
       chart.update("none");
     }
-
 
     function applyPayload(payload) {
       if (!payload || !payload.channels) return;
@@ -575,4 +569,3 @@
   </script>
 </body>
 </html>
-
