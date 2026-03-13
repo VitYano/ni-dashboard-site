@@ -199,6 +199,28 @@
       return Number.isFinite(n) ? n.toFixed(3) : "--";
     }
 
+    function getTimeAxisLabel(maxSeconds) {
+      if (maxSeconds >= 3600) return "t (h)";
+      if (maxSeconds >= 60) return "t (min)";
+      return "t (s)";
+    }
+
+    function formatTimeTick(value) {
+      const v = Number(value);
+
+      if (v >= 3600) {
+        const h = v / 3600;
+        return (Number.isInteger(h) ? h.toFixed(0) : h.toFixed(1)) + " h";
+      }
+
+      if (v >= 60) {
+        const m = v / 60;
+        return (Number.isInteger(m) ? m.toFixed(0) : m.toFixed(1)) + " min";
+      }
+
+      return v.toFixed(0) + " s";
+    }
+
     function downloadTextFile(filename, content, contentType = "text/csv;charset=utf-8;") {
       const blob = new Blob([content], { type: contentType });
       const url = URL.createObjectURL(blob);
@@ -364,7 +386,13 @@
             x: {
               type: "linear",
               title: { display: true, text: "t (s)" },
-              ticks: { color: "#cbd5e1", maxTicksLimit: 6 },
+              ticks: {
+                color: "#cbd5e1",
+                maxTicksLimit: 6,
+                callback(value) {
+                  return formatTimeTick(value);
+                }
+              },
               grid: { color: "rgba(255,255,255,0.08)" }
             },
             y: {
@@ -383,6 +411,11 @@
             },
             tooltip: {
               callbacks: {
+                title(items) {
+                  if (!items || !items.length) return "";
+                  const x = items[0].parsed.x;
+                  return "t: " + formatTimeTick(x);
+                },
                 label(context) {
                   const y = Number(context.parsed.y).toFixed(3);
                   if (context.datasetIndex === 0) return `${label} mean: ${y}`;
@@ -399,6 +432,7 @@
 
     function clearChart(chart) {
       chart.data.datasets.forEach(ds => ds.data = []);
+      chart.options.scales.x.title.text = "t (s)";
       chart.update("none");
     }
 
@@ -447,6 +481,9 @@
         dsMax.splice(0, dsMax.length - MAX_POINTS);
         dsMin.splice(0, dsMin.length - MAX_POINTS);
       }
+
+      const maxX = dsMean.length ? Number(dsMean[dsMean.length - 1].x) : 0;
+      chart.options.scales.x.title.text = getTimeAxisLabel(maxX);
 
       chart.update("none");
     }
@@ -569,4 +606,3 @@
   </script>
 </body>
 </html>
-
