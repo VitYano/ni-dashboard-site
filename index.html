@@ -649,58 +649,58 @@
     function renderRainflowChart(channelKey, payload) {
       const el = document.getElementById(`rainflow-${channelKey}`);
       const statsEl = document.getElementById(`rainflow-stats-${channelKey}`);
-
+    
       if (!el) return;
-
+    
       if (!payload || !payload.range_bins?.length || !payload.mean_bins?.length || !payload.matrix?.length) {
         if (statsEl) statsEl.textContent = "range -- | mean -- | cycles --";
         const old = echarts.getInstanceByDom(el);
         if (old) old.clear();
         return;
       }
-
+    
       const rangeBins = payload.range_bins.map(Number);
       const meanBins = payload.mean_bins.map(Number);
       const matrix = payload.matrix.map(row => row.map(Number));
-
+    
       let totalCycles = 0;
       let maxCount = 0;
       const data = [];
-
+    
       for (let yi = 0; yi < meanBins.length; yi++) {
         for (let xi = 0; xi < rangeBins.length; xi++) {
           const count = Number(matrix[yi]?.[xi] ?? 0);
           totalCycles += count;
           if (count > maxCount) maxCount = count;
-          data.push([rangeBins[xi], meanBins[yi], count]);
+    
+          if (count > 0) {
+            data.push([rangeBins[xi], meanBins[yi], count]);
+          }
         }
       }
-
+    
       const rangeMin = rangeBins[0];
       const rangeMax = rangeBins[rangeBins.length - 1];
       const meanMin = meanBins[0];
       const meanMax = meanBins[meanBins.length - 1];
-
+    
       if (statsEl) {
         statsEl.textContent =
           `range ${fmt(rangeMin)} .. ${fmt(rangeMax)} | mean ${fmt(meanMin)} .. ${fmt(meanMax)} | cycles ${fmt(totalCycles)}`;
       }
-
+    
       let xStep = 1;
       let yStep = 1;
-
-      if (rangeBins.length > 1) {
-        xStep = Math.abs(rangeBins[1] - rangeBins[0]);
-      }
-      if (meanBins.length > 1) {
-        yStep = Math.abs(meanBins[1] - meanBins[0]);
-      }
-
+    
+      if (rangeBins.length > 1) xStep = Math.abs(rangeBins[1] - rangeBins[0]);
+      if (meanBins.length > 1) yStep = Math.abs(meanBins[1] - meanBins[0]);
+    
       const chart = echarts.getInstanceByDom(el) || echarts.init(el);
       rainflowCharts[channelKey] = chart;
-
+    
       chart.setOption({
         backgroundColor: "transparent",
+        animation: false,
         tooltip: {
           formatter: (params) => {
             const [rangeVal, meanVal, countVal] = params.data;
@@ -724,7 +724,7 @@
             color: "#e2e8f0"
           },
           inRange: {
-            color: ["#440154", "#31688e", "#35b779", "#fde725"]
+            color: ["#313695", "#4575b4", "#74add1", "#abd9e9", "#fee090", "#fdae61", "#f46d43"]
           }
         },
         xAxis3D: {
@@ -757,21 +757,28 @@
           splitLine: { lineStyle: { color: "rgba(255,255,255,0.08)" } }
         },
         grid3D: {
-          boxWidth: 120,
+          boxWidth: 90,
           boxDepth: 90,
+          boxHeight: 80,
           axisPointer: { show: false },
+          environment: "transparent",
           viewControl: {
             projection: "perspective",
             autoRotate: false,
-            alpha: 22,
+            alpha: 28,
             beta: 38,
-            distance: 210,
+            distance: 180,
             minDistance: 120,
-            maxDistance: 400
+            maxDistance: 260
           },
           light: {
-            main: { intensity: 1.2, shadow: false },
-            ambient: { intensity: 0.55 }
+            main: {
+              intensity: 1.1,
+              shadow: true
+            },
+            ambient: {
+              intensity: 0.45
+            }
           }
         },
         series: [
@@ -779,9 +786,9 @@
             type: "bar3D",
             data: data,
             shading: "lambert",
+            barSize: Math.max(Math.min(xStep, yStep) * 0.7, 2),
             bevelSize: 0,
             minHeight: 0,
-            barSize: Math.max(Math.min(xStep, yStep) * 0.9, 1),
             itemStyle: {
               opacity: 0.98
             },
@@ -907,3 +914,4 @@
   </script>
 </body>
 </html>
+
