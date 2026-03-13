@@ -213,22 +213,23 @@
       URL.revokeObjectURL(url);
     }
 
+
     function buildWideCsv() {
       const meanSeries = {};
-
+    
       for (const key of CHANNEL_KEYS) {
         const chart = charts[key];
-        meanSeries[key] = chart ? chart.data.datasets[1].data : [];
+        meanSeries[key] = chart ? chart.data.datasets[0].data : [];
       }
-
+    
       const timeMap = new Map();
-
+    
       for (const key of CHANNEL_KEYS) {
         for (const point of meanSeries[key]) {
           if (!point || !Number.isFinite(point.x)) continue;
-
+    
           const t = Number(point.x).toFixed(3);
-
+    
           if (!timeMap.has(t)) {
             timeMap.set(t, {
               t,
@@ -238,22 +239,23 @@
               ai3: ""
             });
           }
-
+    
           timeMap.get(t)[key] = Number(point.y).toFixed(3);
         }
       }
-
+    
       const rows = [];
       rows.push(["t", "ai0", "ai1", "ai2", "ai3"]);
-
+    
       const sorted = Array.from(timeMap.values()).sort((a, b) => Number(a.t) - Number(b.t));
-
+    
       for (const row of sorted) {
         rows.push([row.t, row.ai0, row.ai1, row.ai2, row.ai3]);
       }
-
+    
       return rows.map(row => row.join(";")).join("\n");
     }
+   
 
     function downloadWideCsv() {
       const csv = buildWideCsv();
@@ -305,24 +307,14 @@
       charts[channelKey] = makeChart(canvas.id, upper);
     }
 
+ 
     function makeChart(canvasId, label) {
       const ctx = document.getElementById(canvasId).getContext("2d");
-
+    
       return new Chart(ctx, {
         type: "line",
         data: {
           datasets: [
-            {
-              label: label + " min area",
-              data: [],
-              borderColor: "rgba(0,0,0,0)",
-              backgroundColor: "rgba(59,130,246,0.22)",
-              borderWidth: 0,
-              pointRadius: 0,
-              pointHoverRadius: 0,
-              tension: 0.15,
-              fill: { target: 1 }
-            },
             {
               label: label + " mean",
               data: [],
@@ -332,7 +324,8 @@
               pointRadius: 0,
               pointHoverRadius: 3,
               tension: 0.15,
-              fill: false
+              fill: false,
+              order: 3
             },
             {
               label: label + " max area",
@@ -343,7 +336,20 @@
               pointRadius: 0,
               pointHoverRadius: 0,
               tension: 0.15,
-              fill: { target: 1 }
+              fill: { target: 0 },
+              order: 1
+            },
+            {
+              label: label + " min area",
+              data: [],
+              borderColor: "rgba(0,0,0,0)",
+              backgroundColor: "rgba(59,130,246,0.22)",
+              borderWidth: 0,
+              pointRadius: 0,
+              pointHoverRadius: 0,
+              tension: 0.15,
+              fill: { target: 0 },
+              order: 1
             }
           ]
         },
@@ -377,16 +383,15 @@
                 boxWidth: 12,
                 font: { size: 11 },
                 filter(item) {
-                  return item.datasetIndex === 1;
+                  return item.datasetIndex === 0;
                 }
               }
             },
             tooltip: {
               callbacks: {
                 label(context) {
-                  if (context.datasetIndex !== 1) return null;
-                  const y = context.parsed.y;
-                  return `${label} mean: ${Number(y).toFixed(3)}`;
+                  if (context.datasetIndex !== 0) return null;
+                  return `${label} mean: ${Number(context.parsed.y).toFixed(3)}`;
                 }
               }
             }
@@ -394,6 +399,7 @@
         }
       });
     }
+
 
     function clearChart(chart) {
       chart.data.datasets.forEach(ds => ds.data = []);
@@ -428,26 +434,28 @@
       resetStatsText();
     }
 
-    function appendPoint(chart, x, mean, min, max) {
-      const dsMinArea = chart.data.datasets[0].data;
-      const dsMean = chart.data.datasets[1].data;
-      const dsMaxArea = chart.data.datasets[2].data;
 
+    function appendPoint(chart, x, mean, min, max) {
+      const dsMean = chart.data.datasets[0].data;
+      const dsMaxArea = chart.data.datasets[1].data;
+      const dsMinArea = chart.data.datasets[2].data;
+    
       const lastMean = dsMean.length ? dsMean[dsMean.length - 1] : null;
       if (lastMean && lastMean.x === x) return;
-
-      dsMinArea.push({ x, y: min });
+    
       dsMean.push({ x, y: mean });
       dsMaxArea.push({ x, y: max });
-
+      dsMinArea.push({ x, y: min });
+    
       if (dsMean.length > MAX_POINTS) {
-        dsMinArea.splice(0, dsMinArea.length - MAX_POINTS);
         dsMean.splice(0, dsMean.length - MAX_POINTS);
         dsMaxArea.splice(0, dsMaxArea.length - MAX_POINTS);
+        dsMinArea.splice(0, dsMinArea.length - MAX_POINTS);
       }
-
+    
       chart.update("none");
     }
+
 
     function applyPayload(payload) {
       if (!payload || !payload.channels) return;
@@ -567,3 +575,4 @@
   </script>
 </body>
 </html>
+
