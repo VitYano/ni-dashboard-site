@@ -6,7 +6,8 @@
   <title>NI Strain Dashboard</title>
 
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
-  <script src="https://cdn.plot.ly/plotly-2.35.2.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/echarts@5/dist/echarts.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/echarts-gl@2/dist/echarts-gl.min.js"></script>
 
   <style>
     * { box-sizing: border-box; }
@@ -95,12 +96,12 @@
     .rf-card {
       min-height: 0;
       display: grid;
-      grid-template-rows: auto auto 1fr;
+      grid-template-rows: auto auto 1fr auto;
       background: #1e293b;
       border: 1px solid rgba(255,255,255,.08);
       border-radius: 12px;
       padding: 10px;
-      height: 390px;
+      height: 420px;
     }
 
     .chart-title {
@@ -136,6 +137,7 @@
       margin-top: 8px;
       display: flex;
       justify-content: flex-end;
+      gap: 8px;
     }
 
     .download-btn {
@@ -219,9 +221,11 @@
     let activeRunId = null;
     let runStartMs = null;
     let lastUpdatedAtMs = null;
+    let latestRainflowPayload = null;
 
     const statsEls = {};
     const charts = {};
+    const rainflowCharts = {};
 
     function setStatus(text, mode) {
       statusText.textContent = text;
@@ -317,10 +321,40 @@
       return rows.map(row => row.join(";")).join("\n");
     }
 
+    function buildRainflowCsv(channelKey) {
+      if (!latestRainflowPayload || !latestRainflowPayload.channels) return null;
+
+      const channel = latestRainflowPayload.channels[channelKey];
+      if (!channel || !channel.range_bins?.length || !channel.mean_bins?.length || !channel.matrix?.length) {
+        return null;
+      }
+
+      const rows = [];
+      rows.push(["mean_bin \\ range_bin", ...channel.range_bins.map(v => Number(v).toFixed(6))]);
+
+      for (let yi = 0; yi < channel.mean_bins.length; yi++) {
+        const row = [Number(channel.mean_bins[yi]).toFixed(6)];
+        for (let xi = 0; xi < channel.range_bins.length; xi++) {
+          row.push(String(Number(channel.matrix[yi]?.[xi] ?? 0)));
+        }
+        rows.push(row);
+      }
+
+      return rows.map(row => row.join(";")).join("\n");
+    }
+
     function downloadWideCsv() {
       const csv = buildWideCsv();
       const runId = activeRunId || "no_run";
       downloadTextFile(`strain_${runId}.csv`, csv);
+    }
+
+    function downloadRainflowCsv(channelKey) {
+      const csv = buildRainflowCsv(channelKey);
+      if (!csv) return;
+
+      const runId = activeRunId || "no_run";
+      downloadTextFile(`rainflow_${channelKey}_${runId}.csv`, csv);
     }
 
     function makeCard(channelKey) {
@@ -390,9 +424,21 @@
 
       wrap.appendChild(plot);
 
+      const actions = document.createElement("div");
+      actions.className = "card-actions";
+
+      const button = document.createElement("button");
+      button.type = "button";
+      button.className = "download-btn";
+      button.textContent = "Download";
+      button.addEventListener("click", () => downloadRainflowCsv(channelKey));
+
+      actions.appendChild(button);
+
       card.appendChild(title);
       card.appendChild(stats);
       card.appendChild(wrap);
+      card.appendChild(actions);
       rainflowGridEl.appendChild(card);
     }
 
@@ -527,6 +573,7 @@
       updatedAt.textContent = payload.updated_at || "--";
       ageSec.textContent = "0";
       lastUpdatedAtMs = null;
+      rainflowElapsedText.textContent = "--";
 
       clearAllCharts();
       resetStatsText();
@@ -600,83 +647,156 @@
     }
 
     function renderRainflowChart(channelKey, payload) {
-      const elId = `rainflow-${channelKey}`;
+      const el = document.getElementById(`rainflow-${channelKey}`);
       const statsEl = document.getElementById(`rainflow-stats-${channelKey}`);
+
+      if (!el) return;
 
       if (!payload || !payload.range_bins?.length || !payload.mean_bins?.length || !payload.matrix?.length) {
         if (statsEl) statsEl.textContent = "range -- | mean -- | cycles --";
-        Plotly.react(elId, [], {
-          paper_bgcolor: "#1e293b",
-          plot_bgcolor: "#1e293b",
-          font: { color: "#e2e8f0" }
-        }, { responsive: true, displayModeBar: false });
+        const old = echarts.getInstanceByDom(el);
+        if (old) old.clear();
         return;
       }
 
+      const rangeBins = payload.range_bins.map(Number);
+      const meanBins = payload.mean_bins.map(Number);
+      const matrix = payload.matrix.map(row => row.map(Number));
+
       let totalCycles = 0;
-      for (const row of payload.matrix) {
-        for (const v of row) {
-          totalCycles += Number(v) || 0;
+      let maxCount = 0;
+      const data = [];
+
+      for (let yi = 0; yi < meanBins.length; yi++) {
+        for (let xi = 0; xi < rangeBins.length; xi++) {
+          const count = Number(matrix[yi]?.[xi] ?? 0);
+          totalCycles += count;
+          if (count > maxCount) maxCount = count;
+          data.push([rangeBins[xi], meanBins[yi], count]);
         }
       }
 
-      const rangeMin = payload.range_bins[0];
-      const rangeMax = payload.range_bins[payload.range_bins.length - 1];
-      const meanMin = payload.mean_bins[0];
-      const meanMax = payload.mean_bins[payload.mean_bins.length - 1];
+      const rangeMin = rangeBins[0];
+      const rangeMax = rangeBins[rangeBins.length - 1];
+      const meanMin = meanBins[0];
+      const meanMax = meanBins[meanBins.length - 1];
 
       if (statsEl) {
         statsEl.textContent =
           `range ${fmt(rangeMin)} .. ${fmt(rangeMax)} | mean ${fmt(meanMin)} .. ${fmt(meanMax)} | cycles ${fmt(totalCycles)}`;
       }
 
-      Plotly.react(
-        elId,
-        [{
-          type: "surface",
-          x: payload.range_bins,
-          y: payload.mean_bins,
-          z: payload.matrix,
-          colorscale: "Viridis",
-          showscale: true
-        }],
-        {
-          paper_bgcolor: "#1e293b",
-          plot_bgcolor: "#1e293b",
-          font: { color: "#e2e8f0" },
-          margin: { l: 0, r: 0, b: 0, t: 10 },
-          scene: {
-            bgcolor: "#1e293b",
-            xaxis: {
-              title: "Range (µε)",
-              color: "#e2e8f0",
-              gridcolor: "rgba(255,255,255,0.08)",
-              zerolinecolor: "rgba(255,255,255,0.08)"
-            },
-            yaxis: {
-              title: "Mean (µε)",
-              color: "#e2e8f0",
-              gridcolor: "rgba(255,255,255,0.08)",
-              zerolinecolor: "rgba(255,255,255,0.08)"
-            },
-            zaxis: {
-              title: "Count",
-              color: "#e2e8f0",
-              gridcolor: "rgba(255,255,255,0.08)",
-              zerolinecolor: "rgba(255,255,255,0.08)"
-            }
+      let xStep = 1;
+      let yStep = 1;
+
+      if (rangeBins.length > 1) {
+        xStep = Math.abs(rangeBins[1] - rangeBins[0]);
+      }
+      if (meanBins.length > 1) {
+        yStep = Math.abs(meanBins[1] - meanBins[0]);
+      }
+
+      const chart = echarts.getInstanceByDom(el) || echarts.init(el);
+      rainflowCharts[channelKey] = chart;
+
+      chart.setOption({
+        backgroundColor: "transparent",
+        tooltip: {
+          formatter: (params) => {
+            const [rangeVal, meanVal, countVal] = params.data;
+            return [
+              `${channelKey.toUpperCase()} rainflow`,
+              `Range: ${fmt(rangeVal)} µε`,
+              `Mean: ${fmt(meanVal)} µε`,
+              `Count: ${fmt(countVal)}`
+            ].join("<br>");
           }
         },
-        {
-          responsive: true,
-          displayModeBar: false
-        }
-      );
+        visualMap: {
+          min: 0,
+          max: Math.max(maxCount, 1),
+          calculable: true,
+          realtime: false,
+          orient: "vertical",
+          right: 0,
+          top: "middle",
+          textStyle: {
+            color: "#e2e8f0"
+          },
+          inRange: {
+            color: ["#440154", "#31688e", "#35b779", "#fde725"]
+          }
+        },
+        xAxis3D: {
+          type: "value",
+          name: "Range (µε)",
+          min: rangeMin - xStep / 2,
+          max: rangeMax + xStep / 2,
+          nameTextStyle: { color: "#e2e8f0" },
+          axisLabel: { color: "#cbd5e1" },
+          axisLine: { lineStyle: { color: "#64748b" } },
+          splitLine: { lineStyle: { color: "rgba(255,255,255,0.08)" } }
+        },
+        yAxis3D: {
+          type: "value",
+          name: "Mean (µε)",
+          min: meanMin - yStep / 2,
+          max: meanMax + yStep / 2,
+          nameTextStyle: { color: "#e2e8f0" },
+          axisLabel: { color: "#cbd5e1" },
+          axisLine: { lineStyle: { color: "#64748b" } },
+          splitLine: { lineStyle: { color: "rgba(255,255,255,0.08)" } }
+        },
+        zAxis3D: {
+          type: "value",
+          name: "Count",
+          min: 0,
+          nameTextStyle: { color: "#e2e8f0" },
+          axisLabel: { color: "#cbd5e1" },
+          axisLine: { lineStyle: { color: "#64748b" } },
+          splitLine: { lineStyle: { color: "rgba(255,255,255,0.08)" } }
+        },
+        grid3D: {
+          boxWidth: 120,
+          boxDepth: 90,
+          axisPointer: { show: false },
+          viewControl: {
+            projection: "perspective",
+            autoRotate: false,
+            alpha: 22,
+            beta: 38,
+            distance: 210,
+            minDistance: 120,
+            maxDistance: 400
+          },
+          light: {
+            main: { intensity: 1.2, shadow: false },
+            ambient: { intensity: 0.55 }
+          }
+        },
+        series: [
+          {
+            type: "bar3D",
+            data: data,
+            shading: "lambert",
+            bevelSize: 0,
+            minHeight: 0,
+            barSize: Math.max(Math.min(xStep, yStep) * 0.9, 1),
+            itemStyle: {
+              opacity: 0.98
+            },
+            label: {
+              show: false
+            }
+          }
+        ]
+      });
     }
 
     function applyRainflowPayload(payload) {
       if (!payload || !payload.channels) return;
 
+      latestRainflowPayload = payload;
       rainflowElapsedText.textContent = formatElapsed(payload.elapsed_seconds);
 
       for (const key of CHANNEL_KEYS) {
@@ -733,6 +853,13 @@
       else if (currentAge <= 30) setStatus("STALE", "");
       else setStatus("OFFLINE", "bad");
     }, 1000);
+
+    window.addEventListener("resize", () => {
+      for (const key of CHANNEL_KEYS) {
+        const chart = rainflowCharts[key];
+        if (chart) chart.resize();
+      }
+    });
 
     async function start() {
       for (const key of CHANNEL_KEYS) {
