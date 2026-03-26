@@ -8,107 +8,219 @@
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
 
   <style>
+    :root {
+      --bg: #0b1220;
+      --panel: #111827;
+      --panel-2: #172033;
+      --panel-3: #1f2a44;
+      --border: rgba(255, 255, 255, 0.08);
+      --text: #e5e7eb;
+      --muted: #94a3b8;
+      --green: #22c55e;
+      --red: #ef4444;
+      --amber: #f59e0b;
+      --shadow: 0 10px 30px rgba(0, 0, 0, 0.24);
+      --radius: 18px;
+    }
+
     * { box-sizing: border-box; }
 
     html, body {
       margin: 0;
       padding: 0;
-      width: 100%;
       min-height: 100%;
-      font-family: Arial, sans-serif;
-      background: #0f172a;
-      color: #e2e8f0;
+      background:
+        radial-gradient(circle at top left, rgba(37, 99, 235, 0.10), transparent 28%),
+        radial-gradient(circle at top right, rgba(34, 197, 94, 0.08), transparent 24%),
+        var(--bg);
+      color: var(--text);
+      font-family: Inter, Arial, sans-serif;
     }
 
     body {
-      padding: 10px;
+      padding: 24px;
     }
 
     .app {
+      max-width: 1680px;
+      margin: 0 auto;
       display: grid;
-      grid-template-rows: auto auto auto;
-      gap: 10px;
-      min-height: calc(100vh - 20px);
+      gap: 20px;
     }
 
-    h1 {
-      margin: 0;
-      font-size: 22px;
-      line-height: 1.2;
-    }
-
-    .section-title {
-      margin: 6px 0 0 0;
-      font-size: 18px;
-      line-height: 1.2;
-      color: #cbd5e1;
-    }
-
-    .status-bar {
+    .topbar {
       display: flex;
-      gap: 8px;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 20px;
       flex-wrap: wrap;
     }
 
-    .pill {
+    .title-block h1 {
+      margin: 0;
+      font-size: 32px;
+      line-height: 1.1;
+      letter-spacing: -0.02em;
+    }
+
+    .title-block p {
+      margin: 8px 0 0 0;
+      color: var(--muted);
+      font-size: 14px;
+    }
+
+    .status-chip {
       display: inline-flex;
       align-items: center;
-      gap: 8px;
-      padding: 6px 10px;
+      gap: 10px;
+      padding: 10px 14px;
       border-radius: 999px;
-      background: rgba(255,255,255,.06);
-      border: 1px solid rgba(255,255,255,.08);
-      font-weight: 700;
+      background: rgba(255,255,255,0.05);
+      border: 1px solid var(--border);
       font-size: 13px;
+      font-weight: 700;
+      box-shadow: var(--shadow);
     }
 
     .dot {
-      width: 9px;
-      height: 9px;
+      width: 10px;
+      height: 10px;
       border-radius: 50%;
-      background: #fbbf24;
+      background: var(--amber);
+      box-shadow: 0 0 0 4px rgba(245, 158, 11, 0.14);
+      flex: 0 0 auto;
     }
 
-    .ok { background: #22c55e; }
-    .bad { background: #ef4444; }
+    .dot.ok {
+      background: var(--green);
+      box-shadow: 0 0 0 4px rgba(34, 197, 94, 0.14);
+    }
+
+    .dot.bad {
+      background: var(--red);
+      box-shadow: 0 0 0 4px rgba(239, 68, 68, 0.14);
+    }
+
+    .meta-grid {
+      display: grid;
+      grid-template-columns: repeat(6, minmax(0, 1fr));
+      gap: 12px;
+    }
+
+    .meta-card {
+      background: linear-gradient(180deg, rgba(255,255,255,0.03), rgba(255,255,255,0.015));
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 14px 16px;
+      min-height: 84px;
+      box-shadow: var(--shadow);
+      display: grid;
+      align-content: start;
+      gap: 8px;
+    }
+
+    .meta-label {
+      color: var(--muted);
+      font-size: 12px;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      font-weight: 700;
+    }
+
+    .meta-value {
+      font-size: 15px;
+      font-weight: 700;
+      line-height: 1.35;
+      word-break: break-word;
+    }
+
+    .section-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      flex-wrap: wrap;
+      margin-top: 2px;
+    }
+
+    .section-title {
+      margin: 0;
+      font-size: 20px;
+      letter-spacing: -0.01em;
+    }
+
+    .section-subtitle {
+      color: var(--muted);
+      font-size: 13px;
+    }
 
     .charts {
-      min-height: 0;
       display: grid;
-      grid-template-columns: repeat(4, 1fr);
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 16px;
+    }
+
+    .chart-card {
+      background: linear-gradient(180deg, rgba(255,255,255,0.03), rgba(255,255,255,0.015));
+      border: 1px solid var(--border);
+      border-radius: 20px;
+      padding: 16px;
+      box-shadow: var(--shadow);
+      min-height: 380px;
+      display: grid;
+      grid-template-rows: auto auto 1fr auto;
       gap: 10px;
     }
 
-    .card {
-      min-height: 0;
-      display: grid;
-      grid-template-rows: auto auto 1fr auto;
-      background: #1e293b;
-      border: 1px solid rgba(255,255,255,.08);
-      border-radius: 12px;
-      padding: 10px;
-      height: 350px;
+    .chart-top {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
     }
 
     .chart-title {
-      margin: 0 0 6px 0;
-      font-size: 18px;
-      line-height: 1.2;
+      margin: 0;
+      font-size: 16px;
+      font-weight: 800;
+      letter-spacing: 0.02em;
+    }
+
+    .channel-badge {
+      padding: 6px 10px;
+      border-radius: 999px;
+      background: rgba(59, 130, 246, 0.12);
+      color: #bfdbfe;
+      border: 1px solid rgba(59, 130, 246, 0.18);
+      font-size: 11px;
+      font-weight: 800;
+      letter-spacing: 0.08em;
     }
 
     .stats {
-      margin: 0 0 6px 0;
-      color: #94a3b8;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+
+    .stat-mini {
+      padding: 7px 10px;
+      border-radius: 12px;
+      background: rgba(255,255,255,0.045);
+      border: 1px solid rgba(255,255,255,0.06);
       font-size: 12px;
-      line-height: 1.3;
-      white-space: nowrap;
-      overflow: hidden;
-      text-overflow: ellipsis;
+      color: var(--muted);
+    }
+
+    .stat-mini strong {
+      color: var(--text);
+      font-weight: 700;
+      margin-left: 4px;
     }
 
     .canvas-wrap {
-      min-height: 0;
       position: relative;
+      min-height: 0;
     }
 
     .canvas-wrap canvas {
@@ -118,62 +230,111 @@
     }
 
     .card-actions {
-      margin-top: 8px;
       display: flex;
       justify-content: flex-end;
-      gap: 8px;
     }
 
     .download-btn {
-      background: rgba(255,255,255,.08);
-      border: 1px solid rgba(255,255,255,.12);
-      color: #e2e8f0;
-      border-radius: 8px;
-      padding: 6px 10px;
+      border: 1px solid rgba(255,255,255,0.10);
+      background: rgba(255,255,255,0.06);
+      color: var(--text);
+      border-radius: 12px;
+      padding: 10px 14px;
       font-size: 12px;
       font-weight: 700;
       cursor: pointer;
+      transition: 0.18s ease;
     }
 
     .download-btn:hover {
-      background: rgba(255,255,255,.12);
+      background: rgba(255,255,255,0.10);
+      transform: translateY(-1px);
     }
 
-    @media (max-width: 1400px) {
+    @media (max-width: 1500px) {
+      .meta-grid {
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+      }
+
       .charts {
-        grid-template-columns: repeat(2, 1fr);
+        grid-template-columns: repeat(2, minmax(0, 1fr));
       }
     }
 
     @media (max-width: 900px) {
+      body {
+        padding: 16px;
+      }
+
+      .title-block h1 {
+        font-size: 26px;
+      }
+
+      .meta-grid {
+        grid-template-columns: 1fr;
+      }
+
       .charts {
         grid-template-columns: 1fr;
       }
 
-      .card {
-        height: 340px;
+      .chart-card {
+        min-height: 340px;
       }
     }
   </style>
 </head>
 <body>
   <div class="app">
-    <h1>NI Strain Dashboard</h1>
+    <div class="topbar">
+      <div class="title-block">
+        <h1>NI Strain Dashboard</h1>
+        <p>Live monitoring of strain channels with history and CSV export.</p>
+      </div>
 
-    <div class="status-bar">
-      <div class="pill">
+      <div class="status-chip">
         <span id="dot" class="dot"></span>
         <span id="statusText">CONNECTING...</span>
       </div>
-      <div class="pill">Run: <span id="runIdText">--</span></div>
-      <div class="pill">File: <span id="fileNameText">--</span></div>
-      <div class="pill">Unit: <span id="unitText">microstrain</span></div>
-      <div class="pill">Vex: <span id="vexText">--</span> V</div>
-      <div class="pill">Updated: <span id="updatedAt">--</span></div>
-      <div class="pill">Age: <span id="ageSec">--</span>s</div>
     </div>
 
-    <h2 class="section-title">Live strain</h2>
+    <div class="meta-grid">
+      <div class="meta-card">
+        <div class="meta-label">Run ID</div>
+        <div class="meta-value" id="runIdText">--</div>
+      </div>
+
+      <div class="meta-card">
+        <div class="meta-label">File</div>
+        <div class="meta-value" id="fileNameText">--</div>
+      </div>
+
+      <div class="meta-card">
+        <div class="meta-label">Unit</div>
+        <div class="meta-value" id="unitText">microstrain</div>
+      </div>
+
+      <div class="meta-card">
+        <div class="meta-label">Vex</div>
+        <div class="meta-value"><span id="vexText">--</span> V</div>
+      </div>
+
+      <div class="meta-card">
+        <div class="meta-label">Updated</div>
+        <div class="meta-value" id="updatedAt">--</div>
+      </div>
+
+      <div class="meta-card">
+        <div class="meta-label">Age</div>
+        <div class="meta-value"><span id="ageSec">--</span> s</div>
+      </div>
+    </div>
+
+    <div class="section-header">
+      <h2 class="section-title">Live strain</h2>
+      <div class="section-subtitle">Mean, min and max for channels AI0-AI3</div>
+    </div>
+
     <div class="charts" id="charts"></div>
   </div>
 
@@ -202,7 +363,7 @@
 
     function setStatus(text, mode) {
       statusText.textContent = text;
-      dot.className = "dot " + (mode === "ok" ? "ok" : mode === "bad" ? "bad" : "");
+      dot.className = "dot" + (mode === "ok" ? " ok" : mode === "bad" ? " bad" : "");
     }
 
     function fmt(value) {
@@ -298,23 +459,36 @@
       const upper = channelKey.toUpperCase();
 
       const card = document.createElement("div");
-      card.className = "card";
+      card.className = "chart-card";
 
-      const title = document.createElement("h2");
+      const top = document.createElement("div");
+      top.className = "chart-top";
+
+      const title = document.createElement("h3");
       title.className = "chart-title";
       title.textContent = upper;
+
+      const badge = document.createElement("div");
+      badge.className = "channel-badge";
+      badge.textContent = "CHANNEL";
+
+      top.appendChild(title);
+      top.appendChild(badge);
 
       const stats = document.createElement("div");
       stats.className = "stats";
       stats.id = `stats-${channelKey}`;
-      stats.textContent = "mean -- | min -- | max --";
+      stats.innerHTML = `
+        <div class="stat-mini">Mean<strong>--</strong></div>
+        <div class="stat-mini">Min<strong>--</strong></div>
+        <div class="stat-mini">Max<strong>--</strong></div>
+      `;
 
       const wrap = document.createElement("div");
       wrap.className = "canvas-wrap";
 
       const canvas = document.createElement("canvas");
       canvas.id = `chart-${channelKey}`;
-
       wrap.appendChild(canvas);
 
       const actions = document.createElement("div");
@@ -323,12 +497,12 @@
       const button = document.createElement("button");
       button.type = "button";
       button.className = "download-btn";
-      button.textContent = "Download";
+      button.textContent = "Download CSV";
       button.addEventListener("click", downloadWideCsv);
 
       actions.appendChild(button);
 
-      card.appendChild(title);
+      card.appendChild(top);
       card.appendChild(stats);
       card.appendChild(wrap);
       card.appendChild(actions);
@@ -361,7 +535,7 @@
               label: label + " max",
               data: [],
               borderColor: "rgba(239,68,68,0)",
-              backgroundColor: "rgba(255,120,120,0.30)",
+              backgroundColor: "rgba(255,120,120,0.28)",
               borderWidth: 0,
               pointRadius: 0,
               pointHoverRadius: 0,
@@ -373,7 +547,7 @@
               label: label + " min",
               data: [],
               borderColor: "rgba(59,130,246,0)",
-              backgroundColor: "rgba(59,130,246,0.22)",
+              backgroundColor: "rgba(59,130,246,0.18)",
               borderWidth: 0,
               pointRadius: 0,
               pointHoverRadius: 0,
@@ -396,31 +570,34 @@
           scales: {
             x: {
               type: "linear",
-              title: { display: true, text: "t (s)" },
+              title: { display: true, text: "t (s)", color: "#94a3b8" },
               ticks: {
-                color: "#cbd5e1",
+                color: "#94a3b8",
                 maxTicksLimit: 6,
                 callback(value) {
                   return formatTimeTick(value);
                 }
               },
-              grid: { color: "rgba(255,255,255,0.08)" }
+              grid: { color: "rgba(255,255,255,0.06)" }
             },
             y: {
-              title: { display: true, text: "microstrain" },
-              ticks: { color: "#cbd5e1", maxTicksLimit: 6 },
-              grid: { color: "rgba(255,255,255,0.08)" }
+              title: { display: true, text: "microstrain", color: "#94a3b8" },
+              ticks: { color: "#94a3b8", maxTicksLimit: 6 },
+              grid: { color: "rgba(255,255,255,0.06)" }
             }
           },
           plugins: {
             legend: {
               labels: {
-                color: "#e2e8f0",
+                color: "#cbd5e1",
                 boxWidth: 12,
                 font: { size: 11 }
               }
             },
             tooltip: {
+              backgroundColor: "rgba(15, 23, 42, 0.96)",
+              borderColor: "rgba(255,255,255,0.10)",
+              borderWidth: 1,
               callbacks: {
                 title(items) {
                   if (!items || !items.length) return "";
@@ -454,7 +631,11 @@
 
     function resetStatsText() {
       for (const key of CHANNEL_KEYS) {
-        statsEls[key].textContent = "mean -- | min -- | max --";
+        statsEls[key].innerHTML = `
+          <div class="stat-mini">Mean<strong>--</strong></div>
+          <div class="stat-mini">Min<strong>--</strong></div>
+          <div class="stat-mini">Max<strong>--</strong></div>
+        `;
       }
     }
 
@@ -528,8 +709,11 @@
         const channel = payload.channels[key];
         if (!channel) continue;
 
-        statsEls[key].textContent =
-          `mean ${fmt(channel.mean)} | min ${fmt(channel.min)} | max ${fmt(channel.max)}`;
+        statsEls[key].innerHTML = `
+          <div class="stat-mini">Mean<strong>${fmt(channel.mean)}</strong></div>
+          <div class="stat-mini">Min<strong>${fmt(channel.min)}</strong></div>
+          <div class="stat-mini">Max<strong>${fmt(channel.max)}</strong></div>
+        `;
 
         appendPoint(
           charts[key],
