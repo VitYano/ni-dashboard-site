@@ -103,7 +103,7 @@
 
     .meta-grid {
       display: grid;
-      grid-template-columns: repeat(6, minmax(0, 1fr));
+      grid-template-columns: repeat(4, minmax(0, 1fr));
       gap: 12px;
     }
 
@@ -253,7 +253,7 @@
 
     @media (max-width: 1500px) {
       .meta-grid {
-        grid-template-columns: repeat(3, minmax(0, 1fr));
+        grid-template-columns: repeat(2, minmax(0, 1fr));
       }
 
       .charts {
@@ -315,18 +315,8 @@
       </div>
 
       <div class="meta-card">
-        <div class="meta-label">Vex</div>
-        <div class="meta-value"><span id="vexText">--</span> V</div>
-      </div>
-
-      <div class="meta-card">
         <div class="meta-label">Updated</div>
         <div class="meta-value" id="updatedAt">--</div>
-      </div>
-
-      <div class="meta-card">
-        <div class="meta-label">Age</div>
-        <div class="meta-value"><span id="ageSec">--</span> s</div>
       </div>
     </div>
 
@@ -349,9 +339,7 @@
     const runIdText = document.getElementById("runIdText");
     const fileNameText = document.getElementById("fileNameText");
     const unitText = document.getElementById("unitText");
-    const vexText = document.getElementById("vexText");
     const updatedAt = document.getElementById("updatedAt");
-    const ageSec = document.getElementById("ageSec");
     const chartsEl = document.getElementById("charts");
 
     let activeRunId = null;
@@ -646,9 +634,7 @@
       runIdText.textContent = activeRunId || "--";
       fileNameText.textContent = payload.file_name || "--";
       unitText.textContent = payload.unit || "microstrain";
-      vexText.textContent = Number.isFinite(Number(payload.vex_value)) ? String(payload.vex_value) : "--";
       updatedAt.textContent = payload.updated_at || "--";
-      ageSec.textContent = "0";
       lastUpdatedAtMs = null;
 
       clearAllCharts();
@@ -701,7 +687,6 @@
       runIdText.textContent = payload.run_id || "--";
       fileNameText.textContent = payload.file_name || "--";
       unitText.textContent = payload.unit || "microstrain";
-      vexText.textContent = Number.isFinite(Number(payload.vex_value)) ? String(payload.vex_value) : "--";
 
       const x = runStartMs ? ((ms - runStartMs) / 1000.0) : (ms / 1000.0);
 
@@ -738,8 +723,7 @@
           run_started_at: snapshot.run_started_at,
           file_name: snapshot.file_name,
           updated_at: snapshot.latest?.updated_at || snapshot.run_started_at,
-          unit: snapshot.latest?.unit || "microstrain",
-          vex_value: snapshot.latest?.vex_value
+          unit: snapshot.latest?.unit || "microstrain"
         });
 
         for (const point of snapshot.points || []) {
@@ -754,7 +738,6 @@
       if (!lastUpdatedAtMs) return;
 
       const currentAge = Math.max(0, Math.round((Date.now() - lastUpdatedAtMs) / 1000));
-      ageSec.textContent = String(currentAge);
 
       if (currentAge <= 10) setStatus("LIVE", "ok");
       else if (currentAge <= 30) setStatus("STALE", "");
