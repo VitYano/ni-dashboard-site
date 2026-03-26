@@ -6,8 +6,6 @@
   <title>NI Strain Dashboard</title>
 
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/echarts@5/dist/echarts.min.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/echarts-gl@2/dist/echarts-gl.min.js"></script>
 
   <style>
     * { box-sizing: border-box; }
@@ -28,7 +26,7 @@
 
     .app {
       display: grid;
-      grid-template-rows: auto auto auto auto;
+      grid-template-rows: auto auto auto;
       gap: 10px;
       min-height: calc(100vh - 20px);
     }
@@ -74,8 +72,7 @@
     .ok { background: #22c55e; }
     .bad { background: #ef4444; }
 
-    .charts,
-    .rainflow-grid {
+    .charts {
       min-height: 0;
       display: grid;
       grid-template-columns: repeat(4, 1fr);
@@ -91,17 +88,6 @@
       border-radius: 12px;
       padding: 10px;
       height: 350px;
-    }
-
-    .rf-card {
-      min-height: 0;
-      display: grid;
-      grid-template-rows: auto auto 1fr auto;
-      background: #1e293b;
-      border: 1px solid rgba(255,255,255,.08);
-      border-radius: 12px;
-      padding: 10px;
-      height: 430px;
     }
 
     .chart-title {
@@ -120,14 +106,12 @@
       text-overflow: ellipsis;
     }
 
-    .canvas-wrap,
-    .plot-wrap {
+    .canvas-wrap {
       min-height: 0;
       position: relative;
     }
 
-    .canvas-wrap canvas,
-    .plot-wrap > div {
+    .canvas-wrap canvas {
       width: 100% !important;
       height: 100% !important;
       display: block;
@@ -156,20 +140,17 @@
     }
 
     @media (max-width: 1400px) {
-      .charts,
-      .rainflow-grid {
+      .charts {
         grid-template-columns: repeat(2, 1fr);
       }
     }
 
     @media (max-width: 900px) {
-      .charts,
-      .rainflow-grid {
+      .charts {
         grid-template-columns: 1fr;
       }
 
-      .card,
-      .rf-card {
+      .card {
         height: 340px;
       }
     }
@@ -186,18 +167,14 @@
       </div>
       <div class="pill">Run: <span id="runIdText">--</span></div>
       <div class="pill">File: <span id="fileNameText">--</span></div>
-      <div class="pill">Unit: <span id="unitText">µε</span></div>
+      <div class="pill">Unit: <span id="unitText">microstrain</span></div>
       <div class="pill">Vex: <span id="vexText">--</span> V</div>
       <div class="pill">Updated: <span id="updatedAt">--</span></div>
       <div class="pill">Age: <span id="ageSec">--</span>s</div>
-      <div class="pill">Rainflow: <span id="rainflowElapsedText">--</span></div>
     </div>
 
     <h2 class="section-title">Live strain</h2>
     <div class="charts" id="charts"></div>
-
-    <h2 class="section-title">Accumulated rainflow matrix</h2>
-    <div class="rainflow-grid" id="rainflowGrid"></div>
   </div>
 
   <script>
@@ -214,18 +191,14 @@
     const vexText = document.getElementById("vexText");
     const updatedAt = document.getElementById("updatedAt");
     const ageSec = document.getElementById("ageSec");
-    const rainflowElapsedText = document.getElementById("rainflowElapsedText");
     const chartsEl = document.getElementById("charts");
-    const rainflowGridEl = document.getElementById("rainflowGrid");
 
     let activeRunId = null;
     let runStartMs = null;
     let lastUpdatedAtMs = null;
-    let latestRainflowPayload = null;
 
     const statsEls = {};
     const charts = {};
-    const rainflowCharts = {};
 
     function setStatus(text, mode) {
       statusText.textContent = text;
@@ -257,12 +230,6 @@
       }
 
       return v.toFixed(0) + " s";
-    }
-
-    function formatElapsed(seconds) {
-      const s = Number(seconds);
-      if (!Number.isFinite(s)) return "--";
-      return formatTimeTick(s);
     }
 
     function downloadTextFile(filename, content, contentType = "text/csv;charset=utf-8;") {
@@ -321,40 +288,10 @@
       return rows.map(row => row.join(";")).join("\n");
     }
 
-    function buildRainflowCsv(channelKey) {
-      if (!latestRainflowPayload || !latestRainflowPayload.channels) return null;
-
-      const channel = latestRainflowPayload.channels[channelKey];
-      if (!channel || !channel.range_bins?.length || !channel.mean_bins?.length || !channel.matrix?.length) {
-        return null;
-      }
-
-      const rows = [];
-      rows.push(["mean_bin \\ range_bin", ...channel.range_bins.map(v => Number(v).toFixed(6))]);
-
-      for (let yi = 0; yi < channel.mean_bins.length; yi++) {
-        const row = [Number(channel.mean_bins[yi]).toFixed(6)];
-        for (let xi = 0; xi < channel.range_bins.length; xi++) {
-          row.push(String(Number(channel.matrix[yi]?.[xi] ?? 0)));
-        }
-        rows.push(row);
-      }
-
-      return rows.map(row => row.join(";")).join("\n");
-    }
-
     function downloadWideCsv() {
       const csv = buildWideCsv();
       const runId = activeRunId || "no_run";
       downloadTextFile(`strain_${runId}.csv`, csv);
-    }
-
-    function downloadRainflowCsv(channelKey) {
-      const csv = buildRainflowCsv(channelKey);
-      if (!csv) return;
-
-      const runId = activeRunId || "no_run";
-      downloadTextFile(`rainflow_${channelKey}_${runId}.csv`, csv);
     }
 
     function makeCard(channelKey) {
@@ -399,47 +336,6 @@
 
       statsEls[channelKey] = stats;
       charts[channelKey] = makeChart(canvas.id, upper);
-    }
-
-    function makeRainflowCard(channelKey) {
-      const upper = channelKey.toUpperCase();
-
-      const card = document.createElement("div");
-      card.className = "rf-card";
-
-      const title = document.createElement("h2");
-      title.className = "chart-title";
-      title.textContent = upper + " rainflow";
-
-      const stats = document.createElement("div");
-      stats.className = "stats";
-      stats.id = `rainflow-stats-${channelKey}`;
-      stats.textContent = "range -- | mean -- | cycles --";
-
-      const wrap = document.createElement("div");
-      wrap.className = "plot-wrap";
-
-      const plot = document.createElement("div");
-      plot.id = `rainflow-${channelKey}`;
-
-      wrap.appendChild(plot);
-
-      const actions = document.createElement("div");
-      actions.className = "card-actions";
-
-      const button = document.createElement("button");
-      button.type = "button";
-      button.className = "download-btn";
-      button.textContent = "Download";
-      button.addEventListener("click", () => downloadRainflowCsv(channelKey));
-
-      actions.appendChild(button);
-
-      card.appendChild(title);
-      card.appendChild(stats);
-      card.appendChild(wrap);
-      card.appendChild(actions);
-      rainflowGridEl.appendChild(card);
     }
 
     function makeChart(canvasId, label) {
@@ -511,7 +407,7 @@
               grid: { color: "rgba(255,255,255,0.08)" }
             },
             y: {
-              title: { display: true, text: "µε" },
+              title: { display: true, text: "microstrain" },
               ticks: { color: "#cbd5e1", maxTicksLimit: 6 },
               grid: { color: "rgba(255,255,255,0.08)" }
             }
@@ -568,12 +464,11 @@
 
       runIdText.textContent = activeRunId || "--";
       fileNameText.textContent = payload.file_name || "--";
-      unitText.textContent = payload.unit || "µε";
+      unitText.textContent = payload.unit || "microstrain";
       vexText.textContent = Number.isFinite(Number(payload.vex_value)) ? String(payload.vex_value) : "--";
       updatedAt.textContent = payload.updated_at || "--";
       ageSec.textContent = "0";
       lastUpdatedAtMs = null;
-      rainflowElapsedText.textContent = "--";
 
       clearAllCharts();
       resetStatsText();
@@ -624,7 +519,7 @@
       updatedAt.textContent = ts;
       runIdText.textContent = payload.run_id || "--";
       fileNameText.textContent = payload.file_name || "--";
-      unitText.textContent = payload.unit || "µε";
+      unitText.textContent = payload.unit || "microstrain";
       vexText.textContent = Number.isFinite(Number(payload.vex_value)) ? String(payload.vex_value) : "--";
 
       const x = runStartMs ? ((ms - runStartMs) / 1000.0) : (ms / 1000.0);
@@ -646,163 +541,6 @@
       }
     }
 
-    function renderRainflowChart(channelKey, payload) {
-      const el = document.getElementById(`rainflow-${channelKey}`);
-      const statsEl = document.getElementById(`rainflow-stats-${channelKey}`);
-
-      if (!el) return;
-
-      if (!payload || !payload.range_bins?.length || !payload.mean_bins?.length || !payload.matrix?.length) {
-        if (statsEl) statsEl.textContent = "range -- | mean -- | cycles --";
-        const old = echarts.getInstanceByDom(el);
-        if (old) old.clear();
-        return;
-      }
-
-      const x = payload.range_bins.map(v => Math.max(0, Number(v)));
-      const y = payload.mean_bins.map(v => Math.max(0, Number(v)));
-      const matrix = payload.matrix.map(row => row.map(v => Number(v) || 0));
-
-      let totalCycles = 0;
-      let maxCount = 0;
-      const data = [];
-
-      for (let yi = 0; yi < y.length; yi++) {
-        for (let xi = 0; xi < x.length; xi++) {
-          const count = Number(matrix[yi]?.[xi] ?? 0);
-          totalCycles += count;
-          if (count > maxCount) maxCount = count;
-          if (count > 0) {
-            data.push([x[xi], y[yi], count]);
-          }
-        }
-      }
-
-      const rangeMin = x.length ? Math.min(...x) : 0;
-      const rangeMax = x.length ? Math.max(...x) : 0;
-      const meanMin = y.length ? Math.min(...y) : 0;
-      const meanMax = y.length ? Math.max(...y) : 0;
-
-      if (statsEl) {
-        statsEl.textContent =
-          `range ${fmt(rangeMin)} .. ${fmt(rangeMax)} | mean ${fmt(meanMin)} .. ${fmt(meanMax)} | cycles ${fmt(totalCycles)}`;
-      }
-
-      let xStep = 1;
-      let yStep = 1;
-      if (x.length > 1) xStep = Math.abs(x[1] - x[0]);
-      if (y.length > 1) yStep = Math.abs(y[1] - y[0]);
-
-      const chart = echarts.getInstanceByDom(el) || echarts.init(el);
-      rainflowCharts[channelKey] = chart;
-
-      chart.setOption({
-        backgroundColor: "transparent",
-        animation: false,
-        tooltip: {
-          formatter: (params) => {
-            const [rangeVal, meanVal, countVal] = params.data;
-            return [
-              `${channelKey.toUpperCase()} rainflow`,
-              `Range: ${fmt(rangeVal)} µε`,
-              `Mean: ${fmt(meanVal)} µε`,
-              `Count: ${fmt(countVal)}`
-            ].join("<br>");
-          }
-        },
-        visualMap: {
-          min: 0,
-          max: Math.max(maxCount, 1),
-          calculable: true,
-          realtime: false,
-          orient: "vertical",
-          right: 0,
-          top: "middle",
-          textStyle: { color: "#e2e8f0" },
-          inRange: {
-            color: ["#1d4ed8", "#06b6d4", "#22c55e", "#eab308", "#f97316", "#ef4444"]
-          }
-        },
-        xAxis3D: {
-          type: "value",
-          name: "Range (µε)",
-          min: 0,
-          max: Math.max(...x, 0) + xStep / 2,
-          nameTextStyle: { color: "#e2e8f0" },
-          axisLabel: { color: "#cbd5e1" },
-          axisLine: { lineStyle: { color: "rgba(255,255,255,0.25)" } },
-          splitLine: { show: false },
-          axisPointer: { show: false }
-        },
-        yAxis3D: {
-          type: "value",
-          name: "Mean (µε)",
-          min: 0,
-          max: Math.max(...y, 0) + yStep / 2,
-          nameTextStyle: { color: "#e2e8f0" },
-          axisLabel: { color: "#cbd5e1" },
-          axisLine: { lineStyle: { color: "rgba(255,255,255,0.25)" } },
-          splitLine: { show: false },
-          axisPointer: { show: false }
-        },
-        zAxis3D: {
-          type: "value",
-          name: "Count",
-          min: 0,
-          nameTextStyle: { color: "#e2e8f0" },
-          axisLabel: { color: "#cbd5e1" },
-          axisLine: { lineStyle: { color: "rgba(255,255,255,0.25)" } },
-          splitLine: { show: false },
-          axisPointer: { show: false }
-        },
-        grid3D: {
-          environment: "transparent",
-          boxWidth: 120,
-          boxDepth: 120,
-          boxHeight: 90,
-          axisPointer: { show: false },
-          viewControl: {
-            projection: "perspective",
-            alpha: 18,
-            beta: 32,
-            distance: 220,
-            autoRotate: false,
-            minDistance: 120,
-            maxDistance: 400
-          },
-          light: {
-            main: { intensity: 1.0, shadow: false },
-            ambient: { intensity: 0.75 }
-          }
-        },
-        series: [
-          {
-            type: "bar3D",
-            data: data,
-            shading: "color",
-            bevelSize: 0,
-            barSize: Math.max(Math.min(xStep, yStep) * 0.7, 2),
-            minHeight: 0.5,
-            itemStyle: {
-              opacity: 0.92
-            },
-            label: { show: false }
-          }
-        ]
-      });
-    }
-
-    function applyRainflowPayload(payload) {
-      if (!payload || !payload.channels) return;
-
-      latestRainflowPayload = payload;
-      rainflowElapsedText.textContent = formatElapsed(payload.elapsed_seconds);
-
-      for (const key of CHANNEL_KEYS) {
-        renderRainflowChart(key, payload.channels[key]);
-      }
-    }
-
     async function loadHistory() {
       try {
         const resp = await fetch(API_BASE + "/history", { cache: "no-store" });
@@ -816,7 +554,7 @@
           run_started_at: snapshot.run_started_at,
           file_name: snapshot.file_name,
           updated_at: snapshot.latest?.updated_at || snapshot.run_started_at,
-          unit: snapshot.latest?.unit || "µε",
+          unit: snapshot.latest?.unit || "microstrain",
           vex_value: snapshot.latest?.vex_value
         });
 
@@ -825,20 +563,6 @@
         }
       } catch (e) {
         console.error("History load failed", e);
-      }
-    }
-
-    async function loadRainflowLatest() {
-      try {
-        const resp = await fetch(API_BASE + "/rainflow/latest", { cache: "no-store" });
-        if (!resp.ok) return;
-
-        const payload = await resp.json();
-        if (!payload) return;
-
-        applyRainflowPayload(payload);
-      } catch (e) {
-        console.error("Rainflow load failed", e);
       }
     }
 
@@ -853,21 +577,12 @@
       else setStatus("OFFLINE", "bad");
     }, 1000);
 
-    window.addEventListener("resize", () => {
-      for (const key of CHANNEL_KEYS) {
-        const chart = rainflowCharts[key];
-        if (chart) chart.resize();
-      }
-    });
-
     async function start() {
       for (const key of CHANNEL_KEYS) {
         makeCard(key);
-        makeRainflowCard(key);
       }
 
       await loadHistory();
-      await loadRainflowLatest();
 
       const ws = new WebSocket(WS_URL);
 
@@ -889,11 +604,6 @@
         if (msg.type === "reset" || payload.reset === true) {
           switchToRun(payload);
           setStatus("NEW RUN", "ok");
-          return;
-        }
-
-        if (msg.type === "rainflow") {
-          applyRainflowPayload(payload);
           return;
         }
 
