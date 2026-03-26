@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>NI Strain Dashboard</title>
+  <title>NI Strain & Fatigue Dashboard</title>
 
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
 
@@ -11,14 +11,13 @@
     :root {
       --bg: #182235;
       --panel: #1b2740;
-      --panel-2: #22304d;
-      --panel-3: #2b3b5f;
       --border: rgba(255, 255, 255, 0.14);
       --text: #eef2f7;
       --muted: #b2bfd4;
       --green: #22c55e;
       --red: #ef4444;
       --amber: #f59e0b;
+      --blue: #60a5fa;
       --shadow: 0 12px 34px rgba(0, 0, 0, 0.18);
       --radius: 18px;
     }
@@ -177,10 +176,10 @@
       box-shadow:
         0 12px 34px rgba(0, 0, 0, 0.16),
         inset 0 1px 0 rgba(255,255,255,0.05);
-      min-height: 380px;
+      min-height: 660px;
       display: grid;
-      grid-template-rows: auto auto 1fr auto;
-      gap: 10px;
+      grid-template-rows: auto auto 1fr 1fr auto;
+      gap: 12px;
       backdrop-filter: blur(6px);
     }
 
@@ -232,9 +231,28 @@
       margin-left: 4px;
     }
 
+    .stat-mini.damage strong {
+      color: #fde68a;
+    }
+
+    .canvas-block {
+      display: grid;
+      grid-template-rows: auto 1fr;
+      gap: 8px;
+      min-height: 0;
+    }
+
+    .canvas-label {
+      font-size: 12px;
+      color: var(--muted);
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+    }
+
     .canvas-wrap {
       position: relative;
-      min-height: 0;
+      min-height: 220px;
     }
 
     .canvas-wrap canvas {
@@ -246,6 +264,8 @@
     .card-actions {
       display: flex;
       justify-content: flex-end;
+      gap: 8px;
+      flex-wrap: wrap;
     }
 
     .download-btn {
@@ -294,7 +314,7 @@
       }
 
       .chart-card {
-        min-height: 340px;
+        min-height: 620px;
       }
     }
   </style>
@@ -303,8 +323,8 @@
   <div class="app">
     <div class="topbar">
       <div class="title-block">
-        <h1>NI Strain Dashboard</h1>
-        <p>Live monitoring of strain channels with history and CSV export.</p>
+        <h1>NI Strain & Fatigue Dashboard</h1>
+        <p>Live monitoring of strain channels and cumulative fatigue damage.</p>
       </div>
 
       <div class="status-chip">
@@ -325,7 +345,7 @@
       </div>
 
       <div class="meta-card">
-        <div class="meta-label">Unit</div>
+        <div class="meta-label">Stats Unit</div>
         <div class="meta-value" id="unitText">microstrain</div>
       </div>
 
@@ -336,8 +356,8 @@
     </div>
 
     <div class="section-header">
-      <h2 class="section-title">Live strain</h2>
-      <div class="section-subtitle">Mean, min and max for channels AI0-AI3</div>
+      <h2 class="section-title">Channels AI0-AI3</h2>
+      <div class="section-subtitle">Live strain and fatigue damage history for each channel</div>
     </div>
 
     <div class="charts" id="charts"></div>
@@ -346,7 +366,9 @@
   <script>
     const API_BASE = "https://ni-live-monitor.yanovichvitaliy.workers.dev";
     const WS_URL = "wss://ni-live-monitor.yanovichvitaliy.workers.dev/ws";
-    const MAX_POINTS = 1000;
+
+    const MAX_STATS_POINTS = 1000;
+    const MAX_FATIGUE_POINTS = 1000;
     const CHANNEL_KEYS = ["ai0", "ai1", "ai2", "ai3"];
 
     const dot = document.getElementById("dot");
@@ -362,16 +384,23 @@
     let lastUpdatedAtMs = null;
 
     const statsEls = {};
-    const charts = {};
+    const strainCharts = {};
+    const damageCharts = {};
+    const latestFatigueByChannel = {
+      ai0: null,
+      ai1: null,
+      ai2: null,
+      ai3: null
+    };
 
     function setStatus(text, mode) {
       statusText.textContent = text;
       dot.className = "dot" + (mode === "ok" ? " ok" : mode === "bad" ? " bad" : "");
     }
 
-    function fmt(value) {
+    function fmt(value, digits = 3) {
       const n = Number(value);
-      return Number.isFinite(n) ? n.toFixed(3) : "--";
+      return Number.isFinite(n) ? n.toFixed(digits) : "--";
     }
 
     function getTimeAxisLabel(maxSeconds) {
@@ -410,11 +439,11 @@
       URL.revokeObjectURL(url);
     }
 
-    function buildWideCsv() {
+    function buildStrainCsv() {
       const meanSeries = {};
 
       for (const key of CHANNEL_KEYS) {
-        const chart = charts[key];
+        const chart = strainCharts[key];
         meanSeries[key] = chart ? chart.data.datasets[0].data : [];
       }
 
@@ -427,13 +456,7 @@
           const t = Number(point.x).toFixed(3);
 
           if (!timeMap.has(t)) {
-            timeMap.set(t, {
-              t,
-              ai0: "",
-              ai1: "",
-              ai2: "",
-              ai3: ""
-            });
+            timeMap.set(t, { t, ai0: "", ai1: "", ai2: "", ai3: "" });
           }
 
           timeMap.get(t)[key] = Number(point.y).toFixed(3);
@@ -452,10 +475,52 @@
       return rows.map(row => row.join(";")).join("\n");
     }
 
-    function downloadWideCsv() {
-      const csv = buildWideCsv();
+    function buildDamageCsv() {
+      const damageSeries = {};
+
+      for (const key of CHANNEL_KEYS) {
+        const chart = damageCharts[key];
+        damageSeries[key] = chart ? chart.data.datasets[0].data : [];
+      }
+
+      const timeMap = new Map();
+
+      for (const key of CHANNEL_KEYS) {
+        for (const point of damageSeries[key]) {
+          if (!point || !Number.isFinite(point.x)) continue;
+
+          const t = Number(point.x).toFixed(3);
+
+          if (!timeMap.has(t)) {
+            timeMap.set(t, { t, ai0: "", ai1: "", ai2: "", ai3: "" });
+          }
+
+          timeMap.get(t)[key] = Number(point.y).toFixed(6);
+        }
+      }
+
+      const rows = [];
+      rows.push(["t", "ai0_damage_percent", "ai1_damage_percent", "ai2_damage_percent", "ai3_damage_percent"]);
+
+      const sorted = Array.from(timeMap.values()).sort((a, b) => Number(a.t) - Number(b.t));
+
+      for (const row of sorted) {
+        rows.push([row.t, row.ai0, row.ai1, row.ai2, row.ai3]);
+      }
+
+      return rows.map(row => row.join(";")).join("\n");
+    }
+
+    function downloadStrainCsv() {
+      const csv = buildStrainCsv();
       const runId = activeRunId || "no_run";
       downloadTextFile(`strain_${runId}.csv`, csv);
+    }
+
+    function downloadDamageCsv() {
+      const csv = buildDamageCsv();
+      const runId = activeRunId || "no_run";
+      downloadTextFile(`fatigue_damage_${runId}.csv`, csv);
     }
 
     function makeCard(channelKey) {
@@ -485,37 +550,75 @@
         <div class="stat-mini">Mean<strong>--</strong></div>
         <div class="stat-mini">Min<strong>--</strong></div>
         <div class="stat-mini">Max<strong>--</strong></div>
+        <div class="stat-mini damage">Damage<strong>--</strong></div>
       `;
 
-      const wrap = document.createElement("div");
-      wrap.className = "canvas-wrap";
+      const strainBlock = document.createElement("div");
+      strainBlock.className = "canvas-block";
 
-      const canvas = document.createElement("canvas");
-      canvas.id = `chart-${channelKey}`;
-      wrap.appendChild(canvas);
+      const strainLabel = document.createElement("div");
+      strainLabel.className = "canvas-label";
+      strainLabel.textContent = "Strain history";
+
+      const strainWrap = document.createElement("div");
+      strainWrap.className = "canvas-wrap";
+
+      const strainCanvas = document.createElement("canvas");
+      strainCanvas.id = `chart-strain-${channelKey}`;
+      strainWrap.appendChild(strainCanvas);
+
+      strainBlock.appendChild(strainLabel);
+      strainBlock.appendChild(strainWrap);
+
+      const damageBlock = document.createElement("div");
+      damageBlock.className = "canvas-block";
+
+      const damageLabel = document.createElement("div");
+      damageLabel.className = "canvas-label";
+      damageLabel.textContent = "Fatigue damage";
+
+      const damageWrap = document.createElement("div");
+      damageWrap.className = "canvas-wrap";
+
+      const damageCanvas = document.createElement("canvas");
+      damageCanvas.id = `chart-damage-${channelKey}`;
+      damageWrap.appendChild(damageCanvas);
+
+      damageBlock.appendChild(damageLabel);
+      damageBlock.appendChild(damageWrap);
 
       const actions = document.createElement("div");
       actions.className = "card-actions";
 
-      const button = document.createElement("button");
-      button.type = "button";
-      button.className = "download-btn";
-      button.textContent = "Download CSV";
-      button.addEventListener("click", downloadWideCsv);
+      const btnStrain = document.createElement("button");
+      btnStrain.type = "button";
+      btnStrain.className = "download-btn";
+      btnStrain.textContent = "Download Strain CSV";
+      btnStrain.addEventListener("click", downloadStrainCsv);
 
-      actions.appendChild(button);
+      const btnDamage = document.createElement("button");
+      btnDamage.type = "button";
+      btnDamage.className = "download-btn";
+      btnDamage.textContent = "Download Damage CSV";
+      btnDamage.addEventListener("click", downloadDamageCsv);
+
+      actions.appendChild(btnStrain);
+      actions.appendChild(btnDamage);
 
       card.appendChild(top);
       card.appendChild(stats);
-      card.appendChild(wrap);
+      card.appendChild(strainBlock);
+      card.appendChild(damageBlock);
       card.appendChild(actions);
+
       chartsEl.appendChild(card);
 
       statsEls[channelKey] = stats;
-      charts[channelKey] = makeChart(canvas.id, upper);
+      strainCharts[channelKey] = makeStrainChart(strainCanvas.id, upper);
+      damageCharts[channelKey] = makeDamageChart(damageCanvas.id, upper);
     }
 
-    function makeChart(canvasId, label) {
+    function makeStrainChart(canvasId, label) {
       const ctx = document.getElementById(canvasId).getContext("2d");
 
       return new Chart(ctx, {
@@ -620,6 +723,83 @@
       });
     }
 
+    function makeDamageChart(canvasId, label) {
+      const ctx = document.getElementById(canvasId).getContext("2d");
+
+      return new Chart(ctx, {
+        type: "line",
+        data: {
+          datasets: [
+            {
+              label: label + " damage %",
+              data: [],
+              borderColor: "#f59e0b",
+              backgroundColor: "rgba(245,158,11,0.18)",
+              borderWidth: 2,
+              pointRadius: 2,
+              pointHoverRadius: 4,
+              tension: 0.12,
+              fill: true
+            }
+          ]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          animation: false,
+          parsing: false,
+          normalized: true,
+          interaction: {
+            mode: "nearest",
+            intersect: false
+          },
+          scales: {
+            x: {
+              type: "linear",
+              title: { display: true, text: "t (s)", color: "#b2bfd4" },
+              ticks: {
+                color: "#b2bfd4",
+                maxTicksLimit: 6,
+                callback(value) {
+                  return formatTimeTick(value);
+                }
+              },
+              grid: { color: "rgba(255,255,255,0.07)" }
+            },
+            y: {
+              title: { display: true, text: "damage (%)", color: "#b2bfd4" },
+              ticks: { color: "#b2bfd4", maxTicksLimit: 6 },
+              grid: { color: "rgba(255,255,255,0.07)" },
+              min: 0
+            }
+          },
+          plugins: {
+            legend: {
+              labels: {
+                color: "#dbe4f0",
+                boxWidth: 12,
+                font: { size: 11 }
+              }
+            },
+            tooltip: {
+              backgroundColor: "rgba(15, 23, 42, 0.96)",
+              borderColor: "rgba(255,255,255,0.12)",
+              borderWidth: 1,
+              callbacks: {
+                title(items) {
+                  if (!items || !items.length) return "";
+                  return "t: " + formatTimeTick(items[0].parsed.x);
+                },
+                label(context) {
+                  return `${label} damage: ${Number(context.parsed.y).toFixed(6)} %`;
+                }
+              }
+            }
+          }
+        }
+      });
+    }
+
     function clearChart(chart) {
       chart.data.datasets.forEach(ds => ds.data = []);
       chart.options.scales.x.title.text = "t (s)";
@@ -628,18 +808,37 @@
 
     function clearAllCharts() {
       for (const key of CHANNEL_KEYS) {
-        clearChart(charts[key]);
+        clearChart(strainCharts[key]);
+        clearChart(damageCharts[key]);
       }
     }
 
     function resetStatsText() {
       for (const key of CHANNEL_KEYS) {
+        latestFatigueByChannel[key] = null;
         statsEls[key].innerHTML = `
           <div class="stat-mini">Mean<strong>--</strong></div>
           <div class="stat-mini">Min<strong>--</strong></div>
           <div class="stat-mini">Max<strong>--</strong></div>
+          <div class="stat-mini damage">Damage<strong>--</strong></div>
         `;
       }
+    }
+
+    function renderStatsRow(channelKey, statsChannel = null) {
+      const fatigue = latestFatigueByChannel[channelKey];
+      const damageText = fatigue ? `${fmt(fatigue.damage_percent, 6)}%` : "--";
+
+      const meanText = statsChannel ? fmt(statsChannel.mean) : "--";
+      const minText = statsChannel ? fmt(statsChannel.min) : "--";
+      const maxText = statsChannel ? fmt(statsChannel.max) : "--";
+
+      statsEls[channelKey].innerHTML = `
+        <div class="stat-mini">Mean<strong>${meanText}</strong></div>
+        <div class="stat-mini">Min<strong>${minText}</strong></div>
+        <div class="stat-mini">Max<strong>${maxText}</strong></div>
+        <div class="stat-mini damage">Damage<strong>${damageText}</strong></div>
+      `;
     }
 
     function switchToRun(payload) {
@@ -656,7 +855,7 @@
       resetStatsText();
     }
 
-    function appendPoint(chart, x, mean, min, max) {
+    function appendStrainPoint(chart, x, mean, min, max) {
       const dsMean = chart.data.datasets[0].data;
       const dsMax = chart.data.datasets[1].data;
       const dsMin = chart.data.datasets[2].data;
@@ -668,10 +867,10 @@
       dsMax.push({ x, y: max });
       dsMin.push({ x, y: min });
 
-      if (dsMean.length > MAX_POINTS) {
-        dsMean.splice(0, dsMean.length - MAX_POINTS);
-        dsMax.splice(0, dsMax.length - MAX_POINTS);
-        dsMin.splice(0, dsMin.length - MAX_POINTS);
+      if (dsMean.length > MAX_STATS_POINTS) {
+        dsMean.splice(0, dsMean.length - MAX_STATS_POINTS);
+        dsMax.splice(0, dsMax.length - MAX_STATS_POINTS);
+        dsMin.splice(0, dsMin.length - MAX_STATS_POINTS);
       }
 
       const maxX = dsMean.length ? Number(dsMean[dsMean.length - 1].x) : 0;
@@ -680,7 +879,25 @@
       chart.update("none");
     }
 
-    function applyPayload(payload) {
+    function appendDamagePoint(chart, x, damagePercent) {
+      const ds = chart.data.datasets[0].data;
+      const last = ds.length ? ds[ds.length - 1] : null;
+
+      if (last && last.x === x) return;
+
+      ds.push({ x, y: damagePercent });
+
+      if (ds.length > MAX_FATIGUE_POINTS) {
+        ds.splice(0, ds.length - MAX_FATIGUE_POINTS);
+      }
+
+      const maxX = ds.length ? Number(ds[ds.length - 1].x) : 0;
+      chart.options.scales.x.title.text = getTimeAxisLabel(maxX);
+
+      chart.update("none");
+    }
+
+    function applyStatsPayload(payload) {
       if (!payload || !payload.channels) return;
 
       if (!activeRunId || payload.run_id !== activeRunId) {
@@ -709,18 +926,53 @@
         const channel = payload.channels[key];
         if (!channel) continue;
 
-        statsEls[key].innerHTML = `
-          <div class="stat-mini">Mean<strong>${fmt(channel.mean)}</strong></div>
-          <div class="stat-mini">Min<strong>${fmt(channel.min)}</strong></div>
-          <div class="stat-mini">Max<strong>${fmt(channel.max)}</strong></div>
-        `;
+        renderStatsRow(key, channel);
 
-        appendPoint(
-          charts[key],
+        appendStrainPoint(
+          strainCharts[key],
           x,
           Number(channel.mean),
           Number(channel.min),
           Number(channel.max)
+        );
+      }
+    }
+
+    function applyFatiguePayload(payload) {
+      if (!payload || !payload.channels) return;
+
+      if (!activeRunId || payload.run_id !== activeRunId) {
+        switchToRun(payload);
+      }
+
+      if (!runStartMs && payload.run_started_at) {
+        runStartMs = Date.parse(payload.run_started_at);
+      }
+
+      const ts = payload._received_at || payload.updated_at || null;
+      if (!ts) return;
+
+      const ms = Date.parse(ts);
+      if (!Number.isFinite(ms)) return;
+
+      lastUpdatedAtMs = ms;
+      updatedAt.textContent = ts;
+      runIdText.textContent = payload.run_id || "--";
+      fileNameText.textContent = payload.file_name || "--";
+
+      const x = runStartMs ? ((ms - runStartMs) / 1000.0) : (ms / 1000.0);
+
+      for (const key of CHANNEL_KEYS) {
+        const channel = payload.channels[key];
+        if (!channel) continue;
+
+        latestFatigueByChannel[key] = channel;
+        renderStatsRow(key);
+
+        appendDamagePoint(
+          damageCharts[key],
+          x,
+          Number(channel.damage_percent)
         );
       }
     }
@@ -733,16 +985,22 @@
         const snapshot = await resp.json();
         if (!snapshot || !snapshot.run_id) return;
 
+        const latestRef = snapshot.latest_stats || snapshot.latest_fatigue || null;
+
         switchToRun({
           run_id: snapshot.run_id,
           run_started_at: snapshot.run_started_at,
           file_name: snapshot.file_name,
-          updated_at: snapshot.latest?.updated_at || snapshot.run_started_at,
-          unit: snapshot.latest?.unit || "microstrain"
+          updated_at: latestRef?.updated_at || snapshot.run_started_at,
+          unit: snapshot.latest_stats?.unit || "microstrain"
         });
 
-        for (const point of snapshot.points || []) {
-          applyPayload(point);
+        for (const point of snapshot.stats_points || []) {
+          applyStatsPayload(point);
+        }
+
+        for (const point of snapshot.fatigue_points || []) {
+          applyFatiguePayload(point);
         }
       } catch (e) {
         console.error("History load failed", e);
@@ -789,7 +1047,12 @@
           return;
         }
 
-        applyPayload(payload);
+        if (msg.type === "stats" || payload.type === "stats") {
+          applyStatsPayload(payload);
+        } else if (msg.type === "fatigue" || payload.type === "fatigue") {
+          applyFatiguePayload(payload);
+        }
+
         setStatus("LIVE", "ok");
       };
     }
@@ -797,4 +1060,3 @@
     start();
   </script>
 </body>
-</html>
