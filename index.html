@@ -23,7 +23,9 @@
       --radius: 18px;
     }
 
-    * { box-sizing: border-box; }
+    * {
+      box-sizing: border-box;
+    }
 
     html, body {
       margin: 0;
@@ -77,11 +79,13 @@
       gap: 10px;
       padding: 10px 14px;
       border-radius: 999px;
-      background: rgba(255,255,255,0.05);
+      background: rgba(255,255,255,0.08);
       border: 1px solid var(--border);
       font-size: 13px;
       font-weight: 700;
-      box-shadow: var(--shadow);
+      box-shadow:
+        0 10px 24px rgba(0, 0, 0, 0.14),
+        inset 0 1px 0 rgba(255,255,255,0.05);
     }
 
     .dot {
@@ -89,18 +93,18 @@
       height: 10px;
       border-radius: 50%;
       background: var(--amber);
-      box-shadow: 0 0 0 4px rgba(245, 158, 11, 0.14);
+      box-shadow: 0 0 0 4px rgba(245, 158, 11, 0.16);
       flex: 0 0 auto;
     }
 
     .dot.ok {
       background: var(--green);
-      box-shadow: 0 0 0 4px rgba(34, 197, 94, 0.14);
+      box-shadow: 0 0 0 4px rgba(34, 197, 94, 0.16);
     }
 
     .dot.bad {
       background: var(--red);
-      box-shadow: 0 0 0 4px rgba(239, 68, 68, 0.14);
+      box-shadow: 0 0 0 4px rgba(239, 68, 68, 0.16);
     }
 
     .meta-grid {
@@ -110,15 +114,18 @@
     }
 
     .meta-card {
-      background: linear-gradient(180deg, rgba(255,255,255,0.03), rgba(255,255,255,0.015));
+      background: linear-gradient(180deg, rgba(255,255,255,0.07), rgba(255,255,255,0.03));
       border: 1px solid var(--border);
       border-radius: var(--radius);
       padding: 14px 16px;
       min-height: 84px;
-      box-shadow: var(--shadow);
+      box-shadow:
+        0 12px 34px rgba(0, 0, 0, 0.16),
+        inset 0 1px 0 rgba(255,255,255,0.05);
       display: grid;
       align-content: start;
       gap: 8px;
+      backdrop-filter: blur(6px);
     }
 
     .meta-label {
@@ -163,15 +170,18 @@
     }
 
     .chart-card {
-      background: linear-gradient(180deg, rgba(255,255,255,0.03), rgba(255,255,255,0.015));
+      background: linear-gradient(180deg, rgba(255,255,255,0.075), rgba(255,255,255,0.03));
       border: 1px solid var(--border);
       border-radius: 20px;
       padding: 16px;
-      box-shadow: var(--shadow);
+      box-shadow:
+        0 12px 34px rgba(0, 0, 0, 0.16),
+        inset 0 1px 0 rgba(255,255,255,0.05);
       min-height: 380px;
       display: grid;
       grid-template-rows: auto auto 1fr auto;
       gap: 10px;
+      backdrop-filter: blur(6px);
     }
 
     .chart-top {
@@ -191,12 +201,13 @@
     .channel-badge {
       padding: 6px 10px;
       border-radius: 999px;
-      background: rgba(59, 130, 246, 0.12);
-      color: #bfdbfe;
-      border: 1px solid rgba(59, 130, 246, 0.18);
+      background: rgba(59, 130, 246, 0.16);
+      color: #dbeafe;
+      border: 1px solid rgba(96, 165, 250, 0.24);
       font-size: 11px;
       font-weight: 800;
       letter-spacing: 0.08em;
+      box-shadow: inset 0 1px 0 rgba(255,255,255,0.04);
     }
 
     .stats {
@@ -208,10 +219,11 @@
     .stat-mini {
       padding: 7px 10px;
       border-radius: 12px;
-      background: rgba(255,255,255,0.045);
-      border: 1px solid rgba(255,255,255,0.06);
+      background: rgba(255,255,255,0.07);
+      border: 1px solid rgba(255,255,255,0.09);
       font-size: 12px;
       color: var(--muted);
+      box-shadow: inset 0 1px 0 rgba(255,255,255,0.04);
     }
 
     .stat-mini strong {
@@ -237,8 +249,8 @@
     }
 
     .download-btn {
-      border: 1px solid rgba(255,255,255,0.10);
-      background: rgba(255,255,255,0.06);
+      border: 1px solid rgba(255,255,255,0.14);
+      background: rgba(255,255,255,0.09);
       color: var(--text);
       border-radius: 12px;
       padding: 10px 14px;
@@ -246,10 +258,11 @@
       font-weight: 700;
       cursor: pointer;
       transition: 0.18s ease;
+      box-shadow: inset 0 1px 0 rgba(255,255,255,0.04);
     }
 
     .download-btn:hover {
-      background: rgba(255,255,255,0.10);
+      background: rgba(255,255,255,0.14);
       transform: translateY(-1px);
     }
 
@@ -525,7 +538,7 @@
               label: label + " max",
               data: [],
               borderColor: "rgba(239,68,68,0)",
-              backgroundColor: "rgba(255,120,120,0.28)",
+              backgroundColor: "rgba(255,120,120,0.30)",
               borderWidth: 0,
               pointRadius: 0,
               pointHoverRadius: 0,
@@ -537,7 +550,7 @@
               label: label + " min",
               data: [],
               borderColor: "rgba(59,130,246,0)",
-              backgroundColor: "rgba(59,130,246,0.18)",
+              backgroundColor: "rgba(59,130,246,0.20)",
               borderWidth: 0,
               pointRadius: 0,
               pointHoverRadius: 0,
@@ -560,33 +573,33 @@
           scales: {
             x: {
               type: "linear",
-              title: { display: true, text: "t (s)", color: "#94a3b8" },
+              title: { display: true, text: "t (s)", color: "#b2bfd4" },
               ticks: {
-                color: "#94a3b8",
+                color: "#b2bfd4",
                 maxTicksLimit: 6,
                 callback(value) {
                   return formatTimeTick(value);
                 }
               },
-              grid: { color: "rgba(255,255,255,0.06)" }
+              grid: { color: "rgba(255,255,255,0.07)" }
             },
             y: {
-              title: { display: true, text: "microstrain", color: "#94a3b8" },
-              ticks: { color: "#94a3b8", maxTicksLimit: 6 },
-              grid: { color: "rgba(255,255,255,0.06)" }
+              title: { display: true, text: "microstrain", color: "#b2bfd4" },
+              ticks: { color: "#b2bfd4", maxTicksLimit: 6 },
+              grid: { color: "rgba(255,255,255,0.07)" }
             }
           },
           plugins: {
             legend: {
               labels: {
-                color: "#cbd5e1",
+                color: "#dbe4f0",
                 boxWidth: 12,
                 font: { size: 11 }
               }
             },
             tooltip: {
               backgroundColor: "rgba(15, 23, 42, 0.96)",
-              borderColor: "rgba(255,255,255,0.10)",
+              borderColor: "rgba(255,255,255,0.12)",
               borderWidth: 1,
               callbacks: {
                 title(items) {
