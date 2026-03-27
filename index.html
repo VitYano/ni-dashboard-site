@@ -1,3 +1,4 @@
+
 <!doctype html>
 <html lang="uk">
 <head>
@@ -324,7 +325,7 @@
     <div class="topbar">
       <div class="title-block">
         <h1>NI Strain & Fatigue Dashboard</h1>
-        <p>Live monitoring of strain channels and cumulative fatigue damage.</p>
+        <p>Live monitoring of strain channels and cumulative fatigue damage D.</p>
       </div>
 
       <div class="status-chip">
@@ -357,7 +358,7 @@
 
     <div class="section-header">
       <h2 class="section-title">Channels AI0-AI3</h2>
-      <div class="section-subtitle">Live strain and fatigue damage history for each channel</div>
+      <div class="section-subtitle">Live strain and cumulative Miner damage history for each channel</div>
     </div>
 
     <div class="charts" id="charts"></div>
@@ -370,6 +371,7 @@
     const MAX_STATS_POINTS = 1000;
     const MAX_FATIGUE_POINTS = 1000;
     const CHANNEL_KEYS = ["ai0", "ai1", "ai2", "ai3"];
+    const FATIGUE_UNIT = "damage_fraction";
 
     const dot = document.getElementById("dot");
     const statusText = document.getElementById("statusText");
@@ -500,7 +502,7 @@
       }
 
       const rows = [];
-      rows.push(["t", "ai0_damage_percent", "ai1_damage_percent", "ai2_damage_percent", "ai3_damage_percent"]);
+      rows.push(["t", "ai0_damage", "ai1_damage", "ai2_damage", "ai3_damage"]);
 
       const sorted = Array.from(timeMap.values()).sort((a, b) => Number(a.t) - Number(b.t));
 
@@ -550,7 +552,7 @@
         <div class="stat-mini">Mean<strong>--</strong></div>
         <div class="stat-mini">Min<strong>--</strong></div>
         <div class="stat-mini">Max<strong>--</strong></div>
-        <div class="stat-mini damage">Damage<strong>--</strong></div>
+        <div class="stat-mini damage">Damage D<strong>--</strong></div>
       `;
 
       const strainBlock = document.createElement("div");
@@ -575,7 +577,7 @@
 
       const damageLabel = document.createElement("div");
       damageLabel.className = "canvas-label";
-      damageLabel.textContent = "Fatigue damage";
+      damageLabel.textContent = "Fatigue damage D";
 
       const damageWrap = document.createElement("div");
       damageWrap.className = "canvas-wrap";
@@ -599,7 +601,7 @@
       const btnDamage = document.createElement("button");
       btnDamage.type = "button";
       btnDamage.className = "download-btn";
-      btnDamage.textContent = "Download Damage CSV";
+      btnDamage.textContent = "Download Damage D CSV";
       btnDamage.addEventListener("click", downloadDamageCsv);
 
       actions.appendChild(btnStrain);
@@ -731,7 +733,7 @@
         data: {
           datasets: [
             {
-              label: label + " damage %",
+              label: label + " damage D",
               data: [],
               borderColor: "#f59e0b",
               backgroundColor: "rgba(245,158,11,0.18)",
@@ -767,7 +769,7 @@
               grid: { color: "rgba(255,255,255,0.07)" }
             },
             y: {
-              title: { display: true, text: "damage (%)", color: "#b2bfd4" },
+              title: { display: true, text: "damage D", color: "#b2bfd4" },
               ticks: { color: "#b2bfd4", maxTicksLimit: 6 },
               grid: { color: "rgba(255,255,255,0.07)" },
               min: 0
@@ -791,7 +793,7 @@
                   return "t: " + formatTimeTick(items[0].parsed.x);
                 },
                 label(context) {
-                  return `${label} damage: ${Number(context.parsed.y).toFixed(6)} %`;
+                  return `${label} damage D: ${Number(context.parsed.y).toFixed(6)}`;
                 }
               }
             }
@@ -820,14 +822,14 @@
           <div class="stat-mini">Mean<strong>--</strong></div>
           <div class="stat-mini">Min<strong>--</strong></div>
           <div class="stat-mini">Max<strong>--</strong></div>
-          <div class="stat-mini damage">Damage<strong>--</strong></div>
+          <div class="stat-mini damage">Damage D<strong>--</strong></div>
         `;
       }
     }
 
     function renderStatsRow(channelKey, statsChannel = null) {
       const fatigue = latestFatigueByChannel[channelKey];
-      const damageText = fatigue ? `${fmt(fatigue.damage_percent, 6)}%` : "--";
+      const damageText = fatigue ? fmt(fatigue.damage, 6) : "--";
 
       const meanText = statsChannel ? fmt(statsChannel.mean) : "--";
       const minText = statsChannel ? fmt(statsChannel.min) : "--";
@@ -837,7 +839,7 @@
         <div class="stat-mini">Mean<strong>${meanText}</strong></div>
         <div class="stat-mini">Min<strong>${minText}</strong></div>
         <div class="stat-mini">Max<strong>${maxText}</strong></div>
-        <div class="stat-mini damage">Damage<strong>${damageText}</strong></div>
+        <div class="stat-mini damage">Damage D<strong>${damageText}</strong></div>
       `;
     }
 
@@ -847,9 +849,14 @@
 
       runIdText.textContent = activeRunId || "--";
       fileNameText.textContent = payload.file_name || "--";
-      unitText.textContent = payload.unit || "microstrain";
       updatedAt.textContent = payload.updated_at || "--";
       lastUpdatedAtMs = null;
+
+      if (payload.unit && payload.unit !== FATIGUE_UNIT) {
+        unitText.textContent = payload.unit;
+      } else if (!payload.unit) {
+        unitText.textContent = "microstrain";
+      }
 
       clearAllCharts();
       resetStatsText();
@@ -879,13 +886,13 @@
       chart.update("none");
     }
 
-    function appendDamagePoint(chart, x, damagePercent) {
+    function appendDamagePoint(chart, x, damage) {
       const ds = chart.data.datasets[0].data;
       const last = ds.length ? ds[ds.length - 1] : null;
 
       if (last && last.x === x) return;
 
-      ds.push({ x, y: damagePercent });
+      ds.push({ x, y: damage });
 
       if (ds.length > MAX_FATIGUE_POINTS) {
         ds.splice(0, ds.length - MAX_FATIGUE_POINTS);
@@ -972,7 +979,7 @@
         appendDamagePoint(
           damageCharts[key],
           x,
-          Number(channel.damage_percent)
+          Number(channel.damage)
         );
       }
     }
