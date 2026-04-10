@@ -1,3 +1,4 @@
+
 <!doctype html>
 <html lang="uk">
 <head>
@@ -677,7 +678,6 @@
           scales: {
             x: {
               type: "linear",
-              min: 0,
               title: { display: true, text: "t (s)", color: "#b2bfd4" },
               ticks: {
                 color: "#b2bfd4",
@@ -758,7 +758,6 @@
           scales: {
             x: {
               type: "linear",
-              min: 0,
               title: { display: true, text: "t (s)", color: "#b2bfd4" },
               ticks: {
                 color: "#b2bfd4",
@@ -883,6 +882,7 @@
 
       const maxX = dsMean.length ? Number(dsMean[dsMean.length - 1].x) : 0;
       chart.options.scales.x.title.text = getTimeAxisLabel(maxX);
+
       chart.update("none");
     }
 
@@ -900,6 +900,7 @@
 
       const maxX = ds.length ? Number(ds[ds.length - 1].x) : 0;
       chart.options.scales.x.title.text = getTimeAxisLabel(maxX);
+
       chart.update("none");
     }
 
