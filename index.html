@@ -1,4 +1,3 @@
-
 <!doctype html>
 <html lang="uk">
 <head>
@@ -254,6 +253,9 @@
     .canvas-wrap {
       position: relative;
       min-height: 220px;
+      cursor: zoom-in;
+      border-radius: 14px;
+      overflow: hidden;
     }
 
     .canvas-wrap canvas {
@@ -287,6 +289,71 @@
       transform: translateY(-1px);
     }
 
+    .chart-modal {
+      position: fixed;
+      inset: 0;
+      background: rgba(4, 10, 20, 0.82);
+      display: none;
+      align-items: center;
+      justify-content: center;
+      padding: 24px;
+      z-index: 9999;
+      backdrop-filter: blur(6px);
+    }
+
+    .chart-modal.open {
+      display: flex;
+    }
+
+    .chart-modal-content {
+      width: min(96vw, 1400px);
+      height: min(88vh, 900px);
+      background: linear-gradient(180deg, rgba(27,39,64,0.98), rgba(24,34,53,0.98));
+      border: 1px solid rgba(255,255,255,0.14);
+      border-radius: 22px;
+      box-shadow: 0 20px 60px rgba(0,0,0,0.45);
+      padding: 18px;
+      display: grid;
+      grid-template-rows: auto 1fr;
+      gap: 12px;
+    }
+
+    .chart-modal-top {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+    }
+
+    .chart-modal-title {
+      margin: 0;
+      font-size: 18px;
+      font-weight: 800;
+    }
+
+    .chart-modal-close {
+      border: 1px solid rgba(255,255,255,0.14);
+      background: rgba(255,255,255,0.08);
+      color: var(--text);
+      border-radius: 12px;
+      padding: 10px 14px;
+      font-size: 13px;
+      font-weight: 700;
+      cursor: pointer;
+    }
+
+    .chart-modal-canvas-wrap {
+      position: relative;
+      min-height: 0;
+      height: 100%;
+    }
+
+    .chart-modal-canvas-wrap canvas {
+      width: 100% !important;
+      height: 100% !important;
+      display: block;
+    }
+
     @media (max-width: 1500px) {
       .meta-grid {
         grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -316,6 +383,15 @@
 
       .chart-card {
         min-height: 620px;
+      }
+
+      .chart-modal {
+        padding: 12px;
+      }
+
+      .chart-modal-content {
+        width: 100%;
+        height: 90vh;
       }
     }
   </style>
@@ -364,6 +440,19 @@
     <div class="charts" id="charts"></div>
   </div>
 
+  <div class="chart-modal" id="chartModal">
+    <div class="chart-modal-content">
+      <div class="chart-modal-top">
+        <h3 class="chart-modal-title" id="chartModalTitle">Chart</h3>
+        <button type="button" class="chart-modal-close" id="chartModalClose">Close</button>
+      </div>
+
+      <div class="chart-modal-canvas-wrap">
+        <canvas id="chartModalCanvas"></canvas>
+      </div>
+    </div>
+  </div>
+
   <script>
     const API_BASE = "https://ni-live-monitor.yanovichvitaliy.workers.dev";
     const WS_URL = "wss://ni-live-monitor.yanovichvitaliy.workers.dev/ws";
@@ -381,6 +470,11 @@
     const updatedAt = document.getElementById("updatedAt");
     const chartsEl = document.getElementById("charts");
 
+    const chartModal = document.getElementById("chartModal");
+    const chartModalTitle = document.getElementById("chartModalTitle");
+    const chartModalClose = document.getElementById("chartModalClose");
+    const chartModalCanvas = document.getElementById("chartModalCanvas");
+
     let activeRunId = null;
     let runStartMs = null;
     let lastUpdatedAtMs = null;
@@ -394,6 +488,10 @@
       ai2: null,
       ai3: null
     };
+
+    let modalChart = null;
+    let modalSourceChart = null;
+    let modalSourceTitle = "";
 
     function setStatus(text, mode) {
       statusText.textContent = text;
@@ -525,6 +623,73 @@
       downloadTextFile(`fatigue_damage_${runId}.csv`, csv);
     }
 
+    function deepClone(obj) {
+      return JSON.parse(JSON.stringify(obj));
+    }
+
+    function buildModalOptions(sourceChart) {
+      const options = deepClone(sourceChart.options || {});
+      options.responsive = true;
+      options.maintainAspectRatio = false;
+      options.animation = false;
+      return options;
+    }
+
+    function openChartModal(sourceChart, title) {
+      modalSourceChart = sourceChart;
+      modalSourceTitle = title;
+      chartModalTitle.textContent = title;
+
+      if (modalChart) {
+        modalChart.destroy();
+        modalChart = null;
+      }
+
+      const ctx = chartModalCanvas.getContext("2d");
+
+      modalChart = new Chart(ctx, {
+        type: sourceChart.config.type,
+        data: deepClone(sourceChart.data),
+        options: buildModalOptions(sourceChart)
+      });
+
+      chartModal.classList.add("open");
+    }
+
+    function syncModalChart() {
+      if (!modalChart || !modalSourceChart) return;
+
+      modalChart.data = deepClone(modalSourceChart.data);
+      modalChart.options = buildModalOptions(modalSourceChart);
+      modalChart.update("none");
+    }
+
+    function closeChartModal() {
+      chartModal.classList.remove("open");
+
+      if (modalChart) {
+        modalChart.destroy();
+        modalChart = null;
+      }
+
+      modalSourceChart = null;
+      modalSourceTitle = "";
+    }
+
+    chartModalClose.addEventListener("click", closeChartModal);
+
+    chartModal.addEventListener("click", (e) => {
+      if (e.target === chartModal) {
+        closeChartModal();
+      }
+    });
+
+    document.addEventListener("keydown", (e) => {
+      if (e.key === "Escape" && chartModal.classList.contains("open")) {
+        closeChartModal();
+      }
+    });
+
     function makeCard(channelKey) {
       const upper = channelKey.toUpperCase();
 
@@ -610,14 +775,28 @@
       card.appendChild(top);
       card.appendChild(stats);
       card.appendChild(strainBlock);
+      card.appendChild(strainBlock.cloneNode(false)); // temporary placeholder removal safeguard
+      card.removeChild(card.lastChild);
       card.appendChild(damageBlock);
       card.appendChild(actions);
 
       chartsEl.appendChild(card);
 
       statsEls[channelKey] = stats;
-      strainCharts[channelKey] = makeStrainChart(strainCanvas.id, upper);
-      damageCharts[channelKey] = makeDamageChart(damageCanvas.id, upper);
+
+      const strainChart = makeStrainChart(strainCanvas.id, upper);
+      const damageChart = makeDamageChart(damageCanvas.id, upper);
+
+      strainCharts[channelKey] = strainChart;
+      damageCharts[channelKey] = damageChart;
+
+      strainWrap.addEventListener("click", () => {
+        openChartModal(strainChart, `${upper} — Strain history`);
+      });
+
+      damageWrap.addEventListener("click", () => {
+        openChartModal(damageChart, `${upper} — Fatigue damage D`);
+      });
     }
 
     function makeStrainChart(canvasId, label) {
@@ -806,6 +985,10 @@
       chart.data.datasets.forEach(ds => ds.data = []);
       chart.options.scales.x.title.text = "t (s)";
       chart.update("none");
+
+      if (modalSourceChart === chart) {
+        syncModalChart();
+      }
     }
 
     function clearAllCharts() {
@@ -860,6 +1043,10 @@
 
       clearAllCharts();
       resetStatsText();
+
+      if (chartModal.classList.contains("open")) {
+        closeChartModal();
+      }
     }
 
     function appendStrainPoint(chart, x, mean, min, max) {
@@ -884,6 +1071,10 @@
       chart.options.scales.x.title.text = getTimeAxisLabel(maxX);
 
       chart.update("none");
+
+      if (modalSourceChart === chart) {
+        syncModalChart();
+      }
     }
 
     function appendDamagePoint(chart, x, damage) {
@@ -902,6 +1093,10 @@
       chart.options.scales.x.title.text = getTimeAxisLabel(maxX);
 
       chart.update("none");
+
+      if (modalSourceChart === chart) {
+        syncModalChart();
+      }
     }
 
     function applyStatsPayload(payload) {
