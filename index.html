@@ -162,6 +162,89 @@
       font-size: 13px;
     }
 
+    .file-grid {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 12px;
+    }
+
+    .file-card {
+      background: linear-gradient(180deg, rgba(255,255,255,0.07), rgba(255,255,255,0.03));
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 14px 16px;
+      min-height: 132px;
+      box-shadow:
+        0 12px 34px rgba(0, 0, 0, 0.16),
+        inset 0 1px 0 rgba(255,255,255,0.05);
+      display: grid;
+      align-content: start;
+      gap: 10px;
+      backdrop-filter: blur(6px);
+    }
+
+    .file-name {
+      font-size: 14px;
+      font-weight: 700;
+      line-height: 1.35;
+      word-break: break-word;
+    }
+
+    .file-state {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      width: fit-content;
+      padding: 8px 10px;
+      border-radius: 999px;
+      font-size: 12px;
+      font-weight: 800;
+      border: 1px solid rgba(255,255,255,0.12);
+    }
+
+    .file-state.ready {
+      color: #dcfce7;
+      background: rgba(34, 197, 94, 0.14);
+      border-color: rgba(34, 197, 94, 0.24);
+    }
+
+    .file-state.waiting {
+      color: #fef3c7;
+      background: rgba(245, 158, 11, 0.14);
+      border-color: rgba(245, 158, 11, 0.24);
+    }
+
+    .file-state.empty {
+      color: var(--muted);
+      background: rgba(255,255,255,0.06);
+    }
+
+    .file-link {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: fit-content;
+      text-decoration: none;
+      border: 1px solid rgba(255,255,255,0.14);
+      background: rgba(255,255,255,0.09);
+      color: var(--text);
+      border-radius: 12px;
+      padding: 10px 14px;
+      font-size: 12px;
+      font-weight: 700;
+      transition: 0.18s ease;
+    }
+
+    .file-link:hover {
+      background: rgba(255,255,255,0.14);
+      transform: translateY(-1px);
+    }
+
+    .file-link.disabled {
+      pointer-events: none;
+      opacity: 0.45;
+    }
+
     .charts {
       display: grid;
       grid-template-columns: repeat(4, minmax(0, 1fr));
@@ -359,6 +442,10 @@
         grid-template-columns: repeat(2, minmax(0, 1fr));
       }
 
+      .file-grid {
+        grid-template-columns: 1fr;
+      }
+
       .charts {
         grid-template-columns: repeat(2, minmax(0, 1fr));
       }
@@ -433,6 +520,34 @@
     </div>
 
     <div class="section-header">
+      <h2 class="section-title">Файли для завантаження</h2>
+      <div class="section-subtitle">Поточний файл і 2 останні архівні TDMS-файли</div>
+    </div>
+
+    <div class="file-grid">
+      <div class="file-card">
+        <div class="meta-label">Поточний файл</div>
+        <div class="file-name" id="currentFileCardName">--</div>
+        <div class="file-state empty" id="currentFileCardState">Невідомо</div>
+        <a class="file-link disabled" id="currentFileCardLink" href="#" target="_blank" rel="noopener">Завантажити</a>
+      </div>
+
+      <div class="file-card">
+        <div class="meta-label">Останній готовий файл</div>
+        <div class="file-name" id="lastReadyFileName">--</div>
+        <div class="file-state empty" id="lastReadyFileState">Немає</div>
+        <a class="file-link disabled" id="lastReadyFileLink" href="#" target="_blank" rel="noopener">Завантажити</a>
+      </div>
+
+      <div class="file-card">
+        <div class="meta-label">Попередній готовий файл</div>
+        <div class="file-name" id="prevReadyFileName">--</div>
+        <div class="file-state empty" id="prevReadyFileState">Немає</div>
+        <a class="file-link disabled" id="prevReadyFileLink" href="#" target="_blank" rel="noopener">Завантажити</a>
+      </div>
+    </div>
+
+    <div class="section-header">
       <h2 class="section-title">Channels AI0-AI3</h2>
       <div class="section-subtitle">Live strain and cumulative Miner damage history for each channel</div>
     </div>
@@ -470,6 +585,18 @@
     const updatedAt = document.getElementById("updatedAt");
     const chartsEl = document.getElementById("charts");
 
+    const currentFileCardName = document.getElementById("currentFileCardName");
+    const currentFileCardState = document.getElementById("currentFileCardState");
+    const currentFileCardLink = document.getElementById("currentFileCardLink");
+
+    const lastReadyFileName = document.getElementById("lastReadyFileName");
+    const lastReadyFileState = document.getElementById("lastReadyFileState");
+    const lastReadyFileLink = document.getElementById("lastReadyFileLink");
+
+    const prevReadyFileName = document.getElementById("prevReadyFileName");
+    const prevReadyFileState = document.getElementById("prevReadyFileState");
+    const prevReadyFileLink = document.getElementById("prevReadyFileLink");
+
     const chartModal = document.getElementById("chartModal");
     const chartModalTitle = document.getElementById("chartModalTitle");
     const chartModalClose = document.getElementById("chartModalClose");
@@ -478,6 +605,10 @@
     let activeRunId = null;
     let runStartMs = null;
     let lastUpdatedAtMs = null;
+
+    let currentLiveFileName = null;
+    let archivedFiles = [];
+    let lastFilesRefreshMs = 0;
 
     const statsEls = {};
     const strainCharts = {};
@@ -501,6 +632,134 @@
     function fmt(value, digits = 3) {
       const n = Number(value);
       return Number.isFinite(n) ? n.toFixed(digits) : "--";
+    }
+
+    function setFileBox(nameEl, stateEl, linkEl, name, stateText, stateClass, href) {
+      nameEl.textContent = name || "--";
+      stateEl.textContent = stateText;
+      stateEl.className = "file-state " + stateClass;
+
+      if (href) {
+        linkEl.href = href;
+        linkEl.className = "file-link";
+      } else {
+        linkEl.href = "#";
+        linkEl.className = "file-link disabled";
+      }
+    }
+
+    function renderDownloadFiles() {
+      const currentArchived = archivedFiles.find(f => f.file_name === currentLiveFileName) || null;
+
+      if (currentLiveFileName) {
+        if (currentArchived) {
+          setFileBox(
+            currentFileCardName,
+            currentFileCardState,
+            currentFileCardLink,
+            currentLiveFileName,
+            "Готовий до завантаження",
+            "ready",
+            currentArchived.download_url
+          );
+        } else {
+          setFileBox(
+            currentFileCardName,
+            currentFileCardState,
+            currentFileCardLink,
+            currentLiveFileName,
+            "Ще записується / ще не завантажений",
+            "waiting",
+            null
+          );
+        }
+      } else {
+        setFileBox(
+          currentFileCardName,
+          currentFileCardState,
+          currentFileCardLink,
+          "--",
+          "Невідомо",
+          "empty",
+          null
+        );
+      }
+
+      const readyFiles = [...archivedFiles]
+        .sort((a, b) => b.key.localeCompare(a.key))
+        .filter(f => !currentArchived || f.key !== currentArchived.key);
+
+      const newestReady = readyFiles[0] || null;
+      const previousReady = readyFiles[1] || null;
+
+      if (newestReady) {
+        setFileBox(
+          lastReadyFileName,
+          lastReadyFileState,
+          lastReadyFileLink,
+          newestReady.file_name,
+          "Готовий до завантаження",
+          "ready",
+          newestReady.download_url
+        );
+      } else {
+        setFileBox(
+          lastReadyFileName,
+          lastReadyFileState,
+          lastReadyFileLink,
+          "--",
+          "Немає",
+          "empty",
+          null
+        );
+      }
+
+      if (previousReady) {
+        setFileBox(
+          prevReadyFileName,
+          prevReadyFileState,
+          prevReadyFileLink,
+          previousReady.file_name,
+          "Готовий до завантаження",
+          "ready",
+          previousReady.download_url
+        );
+      } else {
+        setFileBox(
+          prevReadyFileName,
+          prevReadyFileState,
+          prevReadyFileLink,
+          "--",
+          "Немає",
+          "empty",
+          null
+        );
+      }
+    }
+
+    async function refreshArchivedFiles(force = false) {
+      if (!activeRunId) return;
+
+      const now = Date.now();
+      if (!force && now - lastFilesRefreshMs < 10000) {
+        return;
+      }
+
+      try {
+        const resp = await fetch(
+          API_BASE + "/files?run_id=" + encodeURIComponent(activeRunId) + "&limit=10",
+          { cache: "no-store" }
+        );
+
+        if (!resp.ok) return;
+
+        const data = await resp.json();
+        archivedFiles = Array.isArray(data.files) ? data.files : [];
+        lastFilesRefreshMs = now;
+        renderDownloadFiles();
+      } catch (e) {
+        console.error("Files load failed", e);
+      }
     }
 
     function getTimeAxisLabel(maxSeconds) {
@@ -775,8 +1034,6 @@
       card.appendChild(top);
       card.appendChild(stats);
       card.appendChild(strainBlock);
-      card.appendChild(strainBlock.cloneNode(false)); // temporary placeholder removal safeguard
-      card.removeChild(card.lastChild);
       card.appendChild(damageBlock);
       card.appendChild(actions);
 
@@ -1035,6 +1292,11 @@
       updatedAt.textContent = payload.updated_at || "--";
       lastUpdatedAtMs = null;
 
+      currentLiveFileName = payload.file_name || null;
+      archivedFiles = [];
+      renderDownloadFiles();
+      refreshArchivedFiles(true);
+
       if (payload.unit && payload.unit !== FATIGUE_UNIT) {
         unitText.textContent = payload.unit;
       } else if (!payload.unit) {
@@ -1122,6 +1384,12 @@
       fileNameText.textContent = payload.file_name || "--";
       unitText.textContent = payload.unit || "microstrain";
 
+      if (payload.file_name && payload.file_name !== currentLiveFileName) {
+        currentLiveFileName = payload.file_name;
+        renderDownloadFiles();
+        refreshArchivedFiles(true);
+      }
+
       const x = runStartMs ? ((ms - runStartMs) / 1000.0) : (ms / 1000.0);
 
       for (const key of CHANNEL_KEYS) {
@@ -1161,6 +1429,12 @@
       updatedAt.textContent = ts;
       runIdText.textContent = payload.run_id || "--";
       fileNameText.textContent = payload.file_name || "--";
+
+      if (payload.file_name && payload.file_name !== currentLiveFileName) {
+        currentLiveFileName = payload.file_name;
+        renderDownloadFiles();
+        refreshArchivedFiles(true);
+      }
 
       const x = runStartMs ? ((ms - runStartMs) / 1000.0) : (ms / 1000.0);
 
@@ -1204,6 +1478,8 @@
         for (const point of snapshot.fatigue_points || []) {
           applyFatiguePayload(point);
         }
+
+        await refreshArchivedFiles(true);
       } catch (e) {
         console.error("History load failed", e);
       }
@@ -1224,7 +1500,12 @@
         makeCard(key);
       }
 
+      renderDownloadFiles();
       await loadHistory();
+
+      setInterval(() => {
+        refreshArchivedFiles(false);
+      }, 15000);
 
       const ws = new WebSocket(WS_URL);
 
