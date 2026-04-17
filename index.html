@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="uk">
+<html lang="en">
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
@@ -162,89 +162,6 @@
       font-size: 13px;
     }
 
-    .file-grid {
-      display: grid;
-      grid-template-columns: repeat(3, minmax(0, 1fr));
-      gap: 12px;
-    }
-
-    .file-card {
-      background: linear-gradient(180deg, rgba(255,255,255,0.07), rgba(255,255,255,0.03));
-      border: 1px solid var(--border);
-      border-radius: var(--radius);
-      padding: 14px 16px;
-      min-height: 132px;
-      box-shadow:
-        0 12px 34px rgba(0, 0, 0, 0.16),
-        inset 0 1px 0 rgba(255,255,255,0.05);
-      display: grid;
-      align-content: start;
-      gap: 10px;
-      backdrop-filter: blur(6px);
-    }
-
-    .file-name {
-      font-size: 14px;
-      font-weight: 700;
-      line-height: 1.35;
-      word-break: break-word;
-    }
-
-    .file-state {
-      display: inline-flex;
-      align-items: center;
-      gap: 8px;
-      width: fit-content;
-      padding: 8px 10px;
-      border-radius: 999px;
-      font-size: 12px;
-      font-weight: 800;
-      border: 1px solid rgba(255,255,255,0.12);
-    }
-
-    .file-state.ready {
-      color: #dcfce7;
-      background: rgba(34, 197, 94, 0.14);
-      border-color: rgba(34, 197, 94, 0.24);
-    }
-
-    .file-state.waiting {
-      color: #fef3c7;
-      background: rgba(245, 158, 11, 0.14);
-      border-color: rgba(245, 158, 11, 0.24);
-    }
-
-    .file-state.empty {
-      color: var(--muted);
-      background: rgba(255,255,255,0.06);
-    }
-
-    .file-link {
-      display: inline-flex;
-      align-items: center;
-      justify-content: center;
-      width: fit-content;
-      text-decoration: none;
-      border: 1px solid rgba(255,255,255,0.14);
-      background: rgba(255,255,255,0.09);
-      color: var(--text);
-      border-radius: 12px;
-      padding: 10px 14px;
-      font-size: 12px;
-      font-weight: 700;
-      transition: 0.18s ease;
-    }
-
-    .file-link:hover {
-      background: rgba(255,255,255,0.14);
-      transform: translateY(-1px);
-    }
-
-    .file-link.disabled {
-      pointer-events: none;
-      opacity: 0.45;
-    }
-
     .charts {
       display: grid;
       grid-template-columns: repeat(4, minmax(0, 1fr));
@@ -372,6 +289,89 @@
       transform: translateY(-1px);
     }
 
+    .file-grid {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(220px, 1fr));
+      gap: 10px;
+    }
+
+    .file-card {
+      background: linear-gradient(180deg, rgba(255,255,255,0.06), rgba(255,255,255,0.025));
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      padding: 10px 12px;
+      min-height: 0;
+      box-shadow:
+        0 8px 22px rgba(0, 0, 0, 0.14),
+        inset 0 1px 0 rgba(255,255,255,0.04);
+      display: grid;
+      align-content: start;
+      gap: 8px;
+      backdrop-filter: blur(6px);
+    }
+
+    .file-name {
+      font-size: 13px;
+      font-weight: 700;
+      line-height: 1.3;
+      word-break: break-word;
+    }
+
+    .file-state {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      width: fit-content;
+      padding: 6px 9px;
+      border-radius: 999px;
+      font-size: 11px;
+      font-weight: 800;
+      border: 1px solid rgba(255,255,255,0.12);
+    }
+
+    .file-state.ready {
+      color: #dcfce7;
+      background: rgba(34, 197, 94, 0.14);
+      border-color: rgba(34, 197, 94, 0.24);
+    }
+
+    .file-state.waiting {
+      color: #fef3c7;
+      background: rgba(245, 158, 11, 0.14);
+      border-color: rgba(245, 158, 11, 0.24);
+    }
+
+    .file-state.empty {
+      color: var(--muted);
+      background: rgba(255,255,255,0.06);
+    }
+
+    .file-link {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: fit-content;
+      text-decoration: none;
+      border: 1px solid rgba(255,255,255,0.12);
+      background: rgba(255,255,255,0.08);
+      color: var(--text);
+      border-radius: 10px;
+      padding: 8px 11px;
+      font-size: 11px;
+      font-weight: 700;
+      transition: 0.18s ease;
+    }
+
+    .file-link:hover {
+      background: rgba(255,255,255,0.13);
+      transform: translateY(-1px);
+    }
+
+    .file-link.disabled {
+      pointer-events: none;
+      opacity: 0.45;
+    }
+
     .chart-modal {
       position: fixed;
       inset: 0;
@@ -442,12 +442,12 @@
         grid-template-columns: repeat(2, minmax(0, 1fr));
       }
 
-      .file-grid {
-        grid-template-columns: 1fr;
-      }
-
       .charts {
         grid-template-columns: repeat(2, minmax(0, 1fr));
+      }
+
+      .file-grid {
+        grid-template-columns: 1fr;
       }
     }
 
@@ -520,39 +520,39 @@
     </div>
 
     <div class="section-header">
-      <h2 class="section-title">Файли для завантаження</h2>
-      <div class="section-subtitle">Поточний файл і 2 останні архівні TDMS-файли</div>
-    </div>
-
-    <div class="file-grid">
-      <div class="file-card">
-        <div class="meta-label">Поточний файл</div>
-        <div class="file-name" id="currentFileCardName">--</div>
-        <div class="file-state empty" id="currentFileCardState">Невідомо</div>
-        <a class="file-link disabled" id="currentFileCardLink" href="#" target="_blank" rel="noopener">Завантажити</a>
-      </div>
-
-      <div class="file-card">
-        <div class="meta-label">Останній готовий файл</div>
-        <div class="file-name" id="lastReadyFileName">--</div>
-        <div class="file-state empty" id="lastReadyFileState">Немає</div>
-        <a class="file-link disabled" id="lastReadyFileLink" href="#" target="_blank" rel="noopener">Завантажити</a>
-      </div>
-
-      <div class="file-card">
-        <div class="meta-label">Попередній готовий файл</div>
-        <div class="file-name" id="prevReadyFileName">--</div>
-        <div class="file-state empty" id="prevReadyFileState">Немає</div>
-        <a class="file-link disabled" id="prevReadyFileLink" href="#" target="_blank" rel="noopener">Завантажити</a>
-      </div>
-    </div>
-
-    <div class="section-header">
       <h2 class="section-title">Channels AI0-AI3</h2>
       <div class="section-subtitle">Live strain and cumulative Miner damage history for each channel</div>
     </div>
 
     <div class="charts" id="charts"></div>
+
+    <div class="section-header">
+      <h2 class="section-title">Download Files</h2>
+      <div class="section-subtitle">Current file and last 2 archived TDMS files</div>
+    </div>
+
+    <div class="file-grid">
+      <div class="file-card">
+        <div class="meta-label">Current File</div>
+        <div class="file-name" id="currentFileCardName">--</div>
+        <div class="file-state empty" id="currentFileCardState">Unknown</div>
+        <a class="file-link disabled" id="currentFileCardLink" href="#" target="_blank" rel="noopener">Download</a>
+      </div>
+
+      <div class="file-card">
+        <div class="meta-label">Latest Ready File</div>
+        <div class="file-name" id="lastReadyFileName">--</div>
+        <div class="file-state empty" id="lastReadyFileState">None</div>
+        <a class="file-link disabled" id="lastReadyFileLink" href="#" target="_blank" rel="noopener">Download</a>
+      </div>
+
+      <div class="file-card">
+        <div class="meta-label">Previous Ready File</div>
+        <div class="file-name" id="prevReadyFileName">--</div>
+        <div class="file-state empty" id="prevReadyFileState">None</div>
+        <a class="file-link disabled" id="prevReadyFileLink" href="#" target="_blank" rel="noopener">Download</a>
+      </div>
+    </div>
   </div>
 
   <div class="chart-modal" id="chartModal">
@@ -622,7 +622,6 @@
 
     let modalChart = null;
     let modalSourceChart = null;
-    let modalSourceTitle = "";
 
     function setStatus(text, mode) {
       statusText.textContent = text;
@@ -658,7 +657,7 @@
             currentFileCardState,
             currentFileCardLink,
             currentLiveFileName,
-            "Готовий до завантаження",
+            "Ready to download",
             "ready",
             currentArchived.download_url
           );
@@ -668,7 +667,7 @@
             currentFileCardState,
             currentFileCardLink,
             currentLiveFileName,
-            "Ще записується / ще не завантажений",
+            "Still recording / not uploaded yet",
             "waiting",
             null
           );
@@ -679,7 +678,7 @@
           currentFileCardState,
           currentFileCardLink,
           "--",
-          "Невідомо",
+          "Unknown",
           "empty",
           null
         );
@@ -698,7 +697,7 @@
           lastReadyFileState,
           lastReadyFileLink,
           newestReady.file_name,
-          "Готовий до завантаження",
+          "Ready to download",
           "ready",
           newestReady.download_url
         );
@@ -708,7 +707,7 @@
           lastReadyFileState,
           lastReadyFileLink,
           "--",
-          "Немає",
+          "None",
           "empty",
           null
         );
@@ -720,7 +719,7 @@
           prevReadyFileState,
           prevReadyFileLink,
           previousReady.file_name,
-          "Готовий до завантаження",
+          "Ready to download",
           "ready",
           previousReady.download_url
         );
@@ -730,7 +729,7 @@
           prevReadyFileState,
           prevReadyFileLink,
           "--",
-          "Немає",
+          "None",
           "empty",
           null
         );
@@ -896,7 +895,6 @@
 
     function openChartModal(sourceChart, title) {
       modalSourceChart = sourceChart;
-      modalSourceTitle = title;
       chartModalTitle.textContent = title;
 
       if (modalChart) {
@@ -932,7 +930,6 @@
       }
 
       modalSourceChart = null;
-      modalSourceTitle = "";
     }
 
     chartModalClose.addEventListener("click", closeChartModal);
