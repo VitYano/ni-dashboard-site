@@ -105,13 +105,12 @@
 
     .meta-grid {
       display: grid;
-      grid-template-columns: repeat(4, minmax(0, 1fr));
+      grid-template-columns: repeat(5, minmax(0, 1fr));
       gap: 12px;
     }
 
     .meta-card,
-    .chart-card,
-    .file-card {
+    .chart-card {
       background: linear-gradient(180deg, rgba(255,255,255,0.07), rgba(255,255,255,0.03));
       border: 1px solid var(--border);
       border-radius: var(--radius);
@@ -123,10 +122,14 @@
 
     .meta-card {
       padding: 14px 16px;
-      min-height: 84px;
+      min-height: 88px;
       display: grid;
       align-content: start;
       gap: 8px;
+    }
+
+    .meta-card.compact-file {
+      min-height: 96px;
     }
 
     .meta-label {
@@ -142,6 +145,15 @@
       font-weight: 700;
       line-height: 1.35;
       word-break: break-word;
+    }
+
+    .meta-file-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      flex-wrap: wrap;
+      margin-top: 2px;
     }
 
     .section-header {
@@ -281,29 +293,15 @@
       transition: 0.18s ease;
     }
 
+    .meta-card .file-link {
+      padding: 7px 10px;
+      font-size: 11px;
+    }
+
     .btn:hover,
     .file-link:hover {
       background: rgba(255,255,255,0.14);
       transform: translateY(-1px);
-    }
-
-    .file-grid {
-      display: grid;
-      grid-template-columns: repeat(2, minmax(260px, 1fr));
-      gap: 12px;
-    }
-
-    .file-card {
-      padding: 12px 14px;
-      display: grid;
-      gap: 8px;
-    }
-
-    .file-name {
-      font-size: 13px;
-      font-weight: 700;
-      line-height: 1.3;
-      word-break: break-word;
     }
 
     .file-state {
@@ -389,7 +387,10 @@
     }
 
     @media (max-width: 1500px) {
-      .meta-grid,
+      .meta-grid {
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+      }
+
       .charts {
         grid-template-columns: repeat(2, minmax(0, 1fr));
       }
@@ -405,8 +406,7 @@
       }
 
       .meta-grid,
-      .charts,
-      .file-grid {
+      .charts {
         grid-template-columns: 1fr;
       }
 
@@ -445,9 +445,21 @@
         <div class="meta-value" id="runIdText">--</div>
       </div>
 
-      <div class="meta-card">
+      <div class="meta-card compact-file">
         <div class="meta-label">Current File</div>
-        <div class="meta-value" id="fileNameText">--</div>
+        <div class="meta-value" id="currentFileNameText">--</div>
+        <div class="meta-file-row">
+          <div class="file-state empty" id="currentFileCardState">Unknown</div>
+        </div>
+      </div>
+
+      <div class="meta-card compact-file">
+        <div class="meta-label">Ready File</div>
+        <div class="meta-value" id="readyFileName">--</div>
+        <div class="meta-file-row">
+          <div class="file-state empty" id="readyFileState">None</div>
+          <a class="file-link disabled" id="readyFileLink" href="#" target="_blank" rel="noopener">Download</a>
+        </div>
       </div>
 
       <div class="meta-card">
@@ -467,26 +479,6 @@
     </div>
 
     <div class="charts" id="charts"></div>
-
-    <div class="section-header">
-      <h2 class="section-title">Download File</h2>
-      <div class="section-subtitle">Current recording file and latest uploaded file</div>
-    </div>
-
-    <div class="file-grid">
-      <div class="file-card">
-        <div class="meta-label">Current File</div>
-        <div class="file-name" id="currentFileCardName">--</div>
-        <div class="file-state empty" id="currentFileCardState">Unknown</div>
-      </div>
-
-      <div class="file-card">
-        <div class="meta-label">Ready File</div>
-        <div class="file-name" id="readyFileName">--</div>
-        <div class="file-state empty" id="readyFileState">None</div>
-        <a class="file-link disabled" id="readyFileLink" href="#" target="_blank" rel="noopener">Download</a>
-      </div>
-    </div>
   </div>
 
   <div class="modal" id="chartModal">
@@ -512,11 +504,10 @@
       dot: document.getElementById("dot"),
       statusText: document.getElementById("statusText"),
       runIdText: document.getElementById("runIdText"),
-      fileNameText: document.getElementById("fileNameText"),
+      currentFileNameText: document.getElementById("currentFileNameText"),
       unitText: document.getElementById("unitText"),
       updatedAt: document.getElementById("updatedAt"),
       charts: document.getElementById("charts"),
-      currentFileCardName: document.getElementById("currentFileCardName"),
       currentFileCardState: document.getElementById("currentFileCardState"),
       readyFileName: document.getElementById("readyFileName"),
       readyFileState: document.getElementById("readyFileState"),
@@ -953,11 +944,11 @@
 
     function renderDownloadFiles() {
       if (app.currentLiveFileName) {
-        el.currentFileCardName.textContent = app.currentLiveFileName;
+        el.currentFileNameText.textContent = app.currentLiveFileName;
         el.currentFileCardState.className = "file-state waiting";
         el.currentFileCardState.textContent = "Recording / uploading";
       } else {
-        el.currentFileCardName.textContent = "--";
+        el.currentFileNameText.textContent = "--";
         el.currentFileCardState.className = "file-state empty";
         el.currentFileCardState.textContent = "Unknown";
       }
@@ -969,7 +960,7 @@
       if (latestReady) {
         el.readyFileName.textContent = latestReady.file_name;
         el.readyFileState.className = "file-state ready";
-        el.readyFileState.textContent = "Available for download";
+        el.readyFileState.textContent = "Available";
         el.readyFileLink.href = latestReady.download_url;
         el.readyFileLink.className = "file-link";
       } else {
@@ -1010,7 +1001,7 @@
       app.archivedFiles = [];
 
       el.runIdText.textContent = app.activeRunId || "--";
-      el.fileNameText.textContent = payload.file_name || "--";
+      el.currentFileNameText.textContent = payload.file_name || "--";
       el.updatedAt.textContent = payload.updated_at || "--";
       el.unitText.textContent = payload.unit || "microstrain";
 
@@ -1042,7 +1033,7 @@
       app.lastUpdatedAtMs = ms;
       el.updatedAt.textContent = ts;
       el.runIdText.textContent = payload.run_id || "--";
-      el.fileNameText.textContent = payload.file_name || "--";
+      el.currentFileNameText.textContent = payload.file_name || "--";
       el.unitText.textContent = payload.unit || "microstrain";
 
       if (payload.file_name && payload.file_name !== app.currentLiveFileName) {
@@ -1085,7 +1076,7 @@
       app.lastUpdatedAtMs = ms;
       el.updatedAt.textContent = ts;
       el.runIdText.textContent = payload.run_id || "--";
-      el.fileNameText.textContent = payload.file_name || "--";
+      el.currentFileNameText.textContent = payload.file_name || "--";
 
       if (payload.file_name && payload.file_name !== app.currentLiveFileName) {
         app.currentLiveFileName = payload.file_name;
