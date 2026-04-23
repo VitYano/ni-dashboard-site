@@ -494,8 +494,10 @@
   </div>
 
   <script>
-    const API_BASE = "https://ni-live-monitor.yanovichvitaliy.workers.dev";
-    const WS_URL = "wss://ni-live-monitor.yanovichvitaliy.workers.dev/ws";
+    const API_BASE = window.location.origin;
+    const WS_URL =
+      `${window.location.protocol === "https:" ? "wss:" : "ws:"}//${window.location.host}/ws`;
+
     const CHANNEL_KEYS = ["ai0", "ai1", "ai2", "ai3"];
     const MAX_STATS_POINTS = 3000;
     const MAX_FATIGUE_POINTS = 3000;
